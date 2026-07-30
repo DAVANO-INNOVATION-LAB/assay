@@ -12,7 +12,7 @@
 <meta property="og:title" content="Zeus Model Scanner — Davano Innovation Lab">
 <meta property="og:description" content="A model is executable code. Zeus reads the serialization format, finds what executes on load, and gates the deployment.">
 
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23080806'/%3E%3Cpath d='M13 3 4.8 13.4h5.7L9.9 21l8.7-11.2h-6z' fill='%23ffe600'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23080806'/%3E%3Cpath d='M13 3 4.8 13.4h5.7L9.9 21l8.7-11.2h-6z' fill='%23ffe800'/%3E%3C/svg%3E">
 
 <style>
 :root {
@@ -21,13 +21,20 @@
   --bg-inset: #050504;
   --border: #23231a;
   --border-bright: #343428;
-  --text: #ecece2;
-  --text-dim: #a0a08f;
-  --text-faint: #8a8a7a;
-  /* Davano hyper yellow */
-  --accent: #ffe600;
+  --text: #f6f4e9;
+  --text-dim: #b2ae97;
+  --text-faint: #928e78;
+  /* Davano hyper yellow.
+     --accent is the brand colour and stays identical in both themes so the
+     page reads yellow either way. --accent-text is the variant safe as text
+     on the page background, and --accent-ink is what sits on top of accent
+     fills. Separating the three is what lets light mode use the real yellow
+     as a highlight instead of degrading it to a dull bronze. */
+  --accent: #ffe800;
+  --accent-text: #ffe800;
   --accent-ink: #14120a;
-  --accent-glow: rgba(255, 230, 0, .11);
+  --accent-glow: rgba(255, 232, 0, .22);
+  --accent-soft: rgba(255, 232, 0, .13);
   --critical: #ff4d5e;
   --high: #ff8a3d;
   /* Muted amber rather than a bright yellow: against a hyper-yellow accent,
@@ -48,16 +55,21 @@
     --border-bright: #ccccbc;
     --text: #14140c;
     --text-dim: #52524a;
-    --text-faint: #6b6b60;
-    /* Hyper yellow is invisible on white, so light mode drops to a deep
-       bronze that keeps the brand hue at accessible contrast. */
-    --accent: #6b5300;
-    --accent-ink: #ffffff;
-    --accent-glow: rgba(107, 83, 0, .08);
-    --critical: #c9243a;
-    --high: #9c4d08;
-    --medium: #75590a;
-    --low: #067247;
+    --text-faint: #5f5f56;
+    /* The brand yellow is kept exactly as-is and used as a fill, with dark
+       ink on top. Only accent-as-text drops to a bronze, because yellow text
+       on white is unreadable at any weight. */
+    --accent: #ffe800;
+    --accent-text: #5c4700;
+    --accent-ink: #14120a;
+    --accent-glow: rgba(255, 232, 0, .38);
+    --accent-soft: rgba(255, 232, 0, .3);
+    /* Severity tones are measured against their own tinted chip background,
+       not the page, so they run darker than they look like they need to. */
+    --critical: #a3132a;
+    --high: #8a4207;
+    --medium: #665008;
+    --low: #05613c;
   }
 }
 
@@ -71,7 +83,7 @@ body {
 }
 
 .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
-a { color: var(--accent); text-decoration: none; }
+a { color: var(--accent-text); text-decoration: none; }
 a:hover { text-decoration: underline; }
 h1, h2, h3 { line-height: 1.2; letter-spacing: -.02em; margin: 0; font-weight: 600; }
 code, .mono { font-family: var(--mono); font-size: .875em; }
@@ -84,7 +96,10 @@ header {
 }
 .bar { display: flex; align-items: center; gap: 16px; height: 58px; }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap; }
-.bolt { width: 22px; height: 22px; flex: none; color: var(--accent); }
+.bolt {
+  width: 22px; height: 22px; flex: none; color: var(--accent);
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+}
 .brand .lab {
   font-family: var(--mono); font-weight: 400; font-size: .72rem;
   letter-spacing: .07em; text-transform: uppercase; color: var(--text-faint);
@@ -103,20 +118,34 @@ header {
   content: ""; position: absolute; top: -160px; left: 50%;
   /* Capped at the hero's own width: a fixed pixel size here widens the
      document on any narrower viewport. */
-  width: min(900px, 100%); height: 520px; transform: translateX(-50%);
-  background: radial-gradient(ellipse at center, var(--accent-glow), transparent 68%);
+  width: min(1000px, 100%); height: 560px; transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, var(--accent-glow), transparent 66%);
   pointer-events: none; z-index: -1;
 }
 .eyebrow {
   display: inline-flex; align-items: center; gap: 8px;
   font-family: var(--mono); font-size: .72rem; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--text-faint);
-  border: 1px solid var(--border); border-radius: 100px;
-  padding: 5px 13px; margin-bottom: 24px;
+  text-transform: uppercase; color: var(--text-dim);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: var(--accent-soft);
+  border-radius: 100px; padding: 5px 13px; margin-bottom: 24px;
 }
-.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+.dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+  flex: none; box-shadow: 0 0 0 3px var(--accent-soft);
+}
 .hero h1 { font-size: clamp(2.05rem, 5.4vw, 3.5rem); max-width: 17ch; }
-.hero h1 em { font-style: normal; color: var(--accent); }
+.hero h1 em { font-style: normal; color: var(--accent-text); text-shadow: 0 0 32px var(--accent-glow); }
+/* Light mode gets the real brand yellow as a highlighter band behind dark
+   text, which keeps contrast while still reading unmistakably yellow. */
+@media (prefers-color-scheme: light) {
+  .hero h1 em {
+    color: var(--text); text-shadow: none;
+    background: linear-gradient(180deg, transparent 58%, var(--accent) 58%);
+    padding: 0 .08em;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  }
+}
 .lede { font-size: clamp(1.02rem, 2vw, 1.17rem); color: var(--text-dim); max-width: 62ch; margin: 22px 0 0; }
 .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
 .btn {
@@ -131,17 +160,22 @@ header {
 
 /* ---------- sections ---------- */
 section { padding: 72px 0; border-top: 1px solid var(--border); }
+/* A filled chip rather than coloured text: the brand yellow then renders
+   identically in both themes instead of degrading to bronze in light mode. */
 .sec-label {
-  font-family: var(--mono); font-size: .72rem; letter-spacing: .1em;
-  text-transform: uppercase; color: var(--accent); margin-bottom: 14px;
+  display: inline-block; font-family: var(--mono); font-size: .7rem;
+  font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  background: var(--accent); color: var(--accent-ink);
+  padding: 4px 10px; border-radius: 4px; margin-bottom: 16px;
 }
 section h2 { font-size: clamp(1.48rem, 3.1vw, 2rem); max-width: 24ch; }
 p.sub { color: var(--text-dim); max-width: 66ch; margin: 16px 0 0; }
 
 /* ---------- model artifact card ---------- */
 .artifact {
-  border: 1px solid var(--border); border-radius: 13px;
-  background: var(--bg-raised); overflow: hidden; margin-top: 36px;
+  border: 1px solid var(--border); border-top: 2px solid var(--accent);
+  border-radius: 13px; background: var(--bg-raised);
+  overflow: hidden; margin-top: 36px;
 }
 .artifact-head {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
@@ -149,7 +183,7 @@ p.sub { color: var(--text-dim); max-width: 66ch; margin: 16px 0 0; }
   background: var(--bg-inset);
 }
 .model-id { display: flex; align-items: baseline; gap: 9px; font-family: var(--mono); font-size: .92rem; }
-.model-id b { font-weight: 600; letter-spacing: -.01em; }
+.model-id b { font-weight: 700; letter-spacing: -.01em; color: var(--accent-text); }
 .model-id span { color: var(--text-faint); font-size: .82rem; }
 .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-left: auto; }
 .chip {
@@ -219,7 +253,7 @@ td.state { white-space: nowrap; }
   border: 1px solid var(--border); border-radius: 6px; padding: 6px 11px;
   color: var(--text-dim); background: var(--bg-raised); white-space: nowrap;
 }
-.life .st.now { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+.life .st.now { border-color: var(--accent); color: var(--accent-ink); background: var(--accent); font-weight: 600; }
 .life .st.bad { border-color: color-mix(in srgb, var(--critical) 45%, transparent); color: var(--critical); }
 .life .arrow { color: var(--text-faint); font-size: .8rem; }
 
@@ -230,10 +264,14 @@ td.state { white-space: nowrap; }
 .stage:first-child { border-radius: 10px 0 0 10px; }
 .stage:last-child { border-radius: 0 10px 10px 0; }
 .stage + .stage { border-left: 0; }
-.stage.key { background: color-mix(in srgb, var(--accent) 7%, var(--bg-raised)); border-color: var(--border-bright); }
+.stage.key {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  box-shadow: inset 0 2px 0 var(--accent);
+}
 .stage h4 { margin: 0 0 6px; font-size: .84rem; font-weight: 600; }
 .stage p { margin: 0; font-size: .75rem; color: var(--text-faint); line-height: 1.5; }
-.stage .num { font-family: var(--mono); font-size: .67rem; color: var(--accent); display: block; margin-bottom: 7px; letter-spacing: .08em; }
+.stage .num { font-family: var(--mono); font-size: .67rem; color: var(--accent-text); display: block; margin-bottom: 7px; letter-spacing: .08em; }
 
 /* ---------- cards ---------- */
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 17px; margin-top: 36px; }
@@ -243,7 +281,7 @@ td.state { white-space: nowrap; }
 .card:hover { border-color: var(--border-bright); }
 .card h3 { font-size: .96rem; margin-bottom: 8px; }
 .card p { margin: 0; font-size: .85rem; color: var(--text-dim); line-height: 1.6; }
-.card .tag { font-family: var(--mono); font-size: .67rem; color: var(--accent); letter-spacing: .06em; text-transform: uppercase; display: block; margin-bottom: 9px; }
+.card .tag { font-family: var(--mono); font-size: .67rem; color: var(--accent-text); letter-spacing: .06em; text-transform: uppercase; display: block; margin-bottom: 9px; }
 
 /* ---------- code ---------- */
 pre {
@@ -253,7 +291,7 @@ pre {
   margin: 22px 0 0; color: var(--text-dim);
 }
 pre .c { color: var(--text-faint); }
-pre .k { color: var(--accent); }
+pre .k { color: var(--accent-text); }
 pre .s { color: var(--low); }
 
 /* ---------- callout ---------- */
