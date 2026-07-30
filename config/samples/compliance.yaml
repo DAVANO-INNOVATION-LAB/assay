@@ -1,0 +1,90 @@
+---
+# Assess every model in the namespace against NIST AI RMF 1.0.
+#
+# Zeus can produce technical evidence for a minority of the framework's 72
+# subcategories. The rest are organizational — that staff are trained, that a
+# diverse team reviewed a decision, that leadership accepted a risk — and no
+# scanner can observe them. They are closed here, by named people, or they
+# stay open in the report.
+apiVersion: security.zeus.io/v1alpha1
+kind: ComplianceProfile
+metadata:
+  name: ai-rmf-baseline
+  namespace: zeus-system
+spec:
+  framework: nist-ai-rmf-1.0
+
+  # Framework conformance is a governance posture rather than an artifact
+  # property, so it is not wired to admission by default. Turning this on
+  # would block every model until its organizational controls are attested.
+  blockOnOpenControls: false
+
+  attestations:
+    - controlID: "GOVERN 1.1"
+      statement: >-
+        AI-related legal and regulatory obligations for this deployment are
+        catalogued in the AI governance register and reviewed quarterly by
+        Legal.
+      attestedBy: legal-counsel
+      attestedAt: "2026-07-01T00:00:00Z"
+      expiresAt: "2027-07-01T00:00:00Z"
+      evidenceURI: https://intranet.example/ai-governance/register
+
+    - controlID: "GOVERN 2.2"
+      statement: >-
+        All ML platform engineers and model owners completed AI risk
+        management training in the current cycle.
+      attestedBy: head-of-ml-governance
+      attestedAt: "2026-06-15T00:00:00Z"
+      expiresAt: "2027-06-15T00:00:00Z"
+
+    - controlID: "GOVERN 2.3"
+      statement: >-
+        The AI governance board holds executive accountability for model
+        deployment risk decisions; minutes are retained.
+      attestedBy: cto
+      attestedAt: "2026-05-20T00:00:00Z"
+      expiresAt: "2027-05-20T00:00:00Z"
+
+    # Partial controls need both halves. Zeus evidences the artifact side of
+    # privacy by finding embedded credentials; training-data privacy is a
+    # judgement only the privacy office can make.
+    - controlID: "MEASURE 2.10"
+      statement: >-
+        Training-data privacy review completed. No personal data is retained
+        in model weights; DPIA on file.
+      attestedBy: privacy-office
+      attestedAt: "2026-07-10T00:00:00Z"
+      expiresAt: "2027-01-10T00:00:00Z"
+
+    # MEASURE 2.11 is deliberately NOT attested here. Zeus has no bias
+    # evaluation until Phase 2, so the control stays open and visible rather
+    # than being quietly inferred from a clean security scan.
+
+  exclusions:
+    - controlID: "MEASURE 2.12"
+      justification: >-
+        Environmental impact of training is assessed by the model provider
+        under contract; this deployment consumes pre-trained models only and
+        performs no training.
+---
+# A stricter profile for a single high-risk model, scoped by selector.
+apiVersion: security.zeus.io/v1alpha1
+kind: ComplianceProfile
+metadata:
+  name: ai-rmf-fraud-detection
+  namespace: zeus-system
+spec:
+  framework: nist-ai-rmf-1.0
+  modelSelector:
+    - "fraud-*"
+  blockOnOpenControls: true
+  attestations:
+    - controlID: "MAP 1.1"
+      statement: >-
+        Intended purpose, deployment context, and applicable financial
+        regulation documented in the model card for the fraud detection
+        programme.
+      attestedBy: fraud-platform-owner
+      attestedAt: "2026-07-20T00:00:00Z"
+      expiresAt: "2027-01-20T00:00:00Z"

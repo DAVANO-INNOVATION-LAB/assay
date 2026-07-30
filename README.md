@@ -55,6 +55,7 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Policy engine | `internal/policy` | Working: rules, exceptions, risk scoring |
 | Admission gate | `internal/webhook` | Working: KServe, Deployments, Pods |
 | Scanner images | `scanners/` | Built: ClamAV, Trivy, Syft, TruffleHog, Grype |
+| AI RMF assessment | `internal/compliance` | Working: 72 controls, evidence-or-attestation |
 | Cosign verification | `cmd/runner` | Stub that fails closed |
 | AI safety evaluation | — | Phase 2 |
 | Console plugin | — | Phase 2 |
@@ -160,6 +161,44 @@ three steps with different privileges:
 Because scan and publish are ordered init-then-main, publish only runs after
 the scanner exits, and it is the single component in the pod holding a token.
 
+## NIST AI RMF 1.0 reporting
+
+Zeus assesses every scanned model version against the AI RMF Core and records
+the result as a `ComplianceReport`. The mapping is deliberately conservative.
+
+The AI RMF is a **voluntary organizational risk-management framework, not a
+technical control baseline**. Of its 72 subcategories, most describe things no
+scanner can observe — that staff are trained, that a diverse team reviewed a
+decision, that leadership accepted a risk. The honest split:
+
+| | Controls |
+|---|---|
+| Zeus evidences in full | 9 |
+| Zeus evidences in part | 24 |
+| Attestation-only | 39 |
+
+Two rules keep the report auditable:
+
+- **A control Zeus cannot observe never comes back `Satisfied` from a scan.**
+  It requires a `ControlAttestation` naming a person, with an expiry, or it
+  stays open. An expired attestation reopens its control; an unattributed one
+  is rejected outright.
+- **Nothing is inferred across trustworthiness characteristics.** A clean
+  security scan says nothing about fairness, so `MEASURE 2.11` stays open
+  until bias evaluation ships in Phase 2. Every assessment publishes the
+  characteristics it did *not* measure, which is what `MEASURE 1.1` asks for.
+
+A perfect scan therefore cannot report framework conformance, and
+`TestPerfectScanIsNotFrameworkConformance` fails the build if it ever does.
+
+```bash
+kubectl apply -f config/samples/compliance.yaml
+```
+
+```bash
+kubectl get compliancereports -n zeus-system
+```
+
 ## Custom resources
 
 | Kind | Purpose |
@@ -172,6 +211,8 @@ the scanner exits, and it is the single component in the pod holding a token.
 | `ArtifactException` | Time-boxed waiver for specific rules |
 | `TrustedPublisher` | Signing identity whose artifacts are trusted |
 | `PromotionRequest` | Approval workflow for dev → stage → prod |
+| `ComplianceProfile` | Governance framework plus its human attestations |
+| `ComplianceReport` | A model version assessed against that framework |
 
 Detailed findings stay in the cluster; only a summary is written back to the
 registry.

@@ -6,30 +6,33 @@
 <title>Zeus Model Scanner — Davano Innovation Lab</title>
 <meta name="description" content="OpenShift-native AI model security from Davano Innovation Lab. Reads model artifacts by format — safetensors, ONNX, GGUF, pickle — scans every version registered in the OpenShift AI Model Registry, and blocks unapproved models at deployment.">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#060908">
+<meta name="theme-color" content="#080806">
 
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zeus Model Scanner — Davano Innovation Lab">
 <meta property="og:description" content="A model is executable code. Zeus reads the serialization format, finds what executes on load, and gates the deployment.">
 
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23060908'/%3E%3Cpath d='M13 3 4.8 13.4h5.7L9.9 21l8.7-11.2h-6z' fill='%2300ff9c'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23080806'/%3E%3Cpath d='M13 3 4.8 13.4h5.7L9.9 21l8.7-11.2h-6z' fill='%23ffe600'/%3E%3C/svg%3E">
 
 <style>
 :root {
-  --bg: #060908;
-  --bg-raised: #0c110f;
-  --bg-inset: #040706;
-  --border: #1a2320;
-  --border-bright: #27332e;
-  --text: #e6ecea;
-  --text-dim: #90a09a;
-  --text-faint: #7d8c85;
-  --accent: #00ff9c;
-  --accent-ink: #04140d;
-  --accent-glow: rgba(0, 255, 156, .13);
+  --bg: #080806;
+  --bg-raised: #101009;
+  --bg-inset: #050504;
+  --border: #23231a;
+  --border-bright: #343428;
+  --text: #ecece2;
+  --text-dim: #a0a08f;
+  --text-faint: #8a8a7a;
+  /* Davano hyper yellow */
+  --accent: #ffe600;
+  --accent-ink: #14120a;
+  --accent-glow: rgba(255, 230, 0, .11);
   --critical: #ff4d5e;
-  --high: #ff9142;
-  --medium: #ffd23f;
+  --high: #ff8a3d;
+  /* Muted amber rather than a bright yellow: against a hyper-yellow accent,
+     a yellow warning chip reads as branding instead of as a severity. */
+  --medium: #c9962a;
   --low: #45c98a;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
@@ -38,20 +41,22 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #fbfdfc;
+    --bg: #fdfdfa;
     --bg-raised: #ffffff;
-    --bg-inset: #f1f5f3;
-    --border: #dde5e1;
-    --border-bright: #c2cec8;
-    --text: #0d1512;
-    --text-dim: #48564f;
-    --text-faint: #616e67;
-    --accent: #04794e;
+    --bg-inset: #f4f4ec;
+    --border: #e4e4d7;
+    --border-bright: #ccccbc;
+    --text: #14140c;
+    --text-dim: #52524a;
+    --text-faint: #6b6b60;
+    /* Hyper yellow is invisible on white, so light mode drops to a deep
+       bronze that keeps the brand hue at accessible contrast. */
+    --accent: #6b5300;
     --accent-ink: #ffffff;
-    --accent-glow: rgba(4, 121, 78, .09);
+    --accent-glow: rgba(107, 83, 0, .08);
     --critical: #c9243a;
-    --high: #a4520a;
-    --medium: #7d6300;
+    --high: #9c4d08;
+    --medium: #75590a;
     --low: #067247;
   }
 }
@@ -280,7 +285,7 @@ footer a { color: var(--text-dim); }
       <a href="#anatomy" class="hide-sm">Anatomy</a>
       <a href="#formats">Formats</a>
       <a href="#lifecycle" class="hide-sm">Lifecycle</a>
-      <a href="#inventory">Inventory</a>
+      <a href="#governance">AI RMF</a>
       <a href="https://github.com/JUMP1ST/zeus-model-scanner">GitHub</a>
     </nav>
   </div>
@@ -580,6 +585,101 @@ $ kubectl get modelsecurityreports -n zeus-system
 NAME                       MODEL                  VERDICT        RISK   MALWARE
 msr-fraud-detector-v2-1-0  fraud-detector         <span class="s">Quarantined</span>    100    Clean
 msr-llama-guard-v1-4-0     llama-guard            <span class="s">Approved</span>         0    Clean</pre>
+  </div>
+</section>
+
+<section id="governance">
+  <div class="wrap">
+    <div class="sec-label">NIST AI RMF 1.0</div>
+    <h2>Framework reporting that will survive an audit.</h2>
+    <p class="sub">
+      Zeus assesses every scanned model version against the AI RMF Core and writes the
+      result to the cluster as a <code>ComplianceReport</code>. What it will not do is
+      claim more than it can see. The AI RMF is a voluntary organizational risk-management
+      framework, not a technical control baseline — most of it describes things no scanner
+      can observe.
+    </p>
+
+    <div class="artifact">
+      <div class="artifact-head">
+        <span class="model-id"><b>AI RMF Core</b><span>72 subcategories</span></span>
+        <span class="chips">
+          <span class="chip ok">9 fully evidenced</span>
+          <span class="chip">24 partial</span>
+          <span class="chip risk">39 attestation-only</span>
+        </span>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>Function</th><th>Controls</th><th>Zeus evidences</th><th>Needs a human</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>GOVERN</td><td>19</td><td>1 full · 9 partial</td><td>9</td></tr>
+            <tr><td>MAP</td><td>18</td><td>1 full · 4 partial</td><td>13</td></tr>
+            <tr><td>MEASURE</td><td>22</td><td>2 full · 6 partial</td><td>14</td></tr>
+            <tr><td>MANAGE</td><td>13</td><td>5 full · 5 partial</td><td>3</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="artifact-foot">
+        <span class="miss">MANAGE scores highest because acting on risk is what an admission gate does.</span>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <span class="tag">MEASURE 2.7</span>
+        <h3>Security and resilience</h3>
+        <p>The subcategory Zeus exists to satisfy: malware, known vulnerabilities, embedded
+           secrets, and unsafe serialization evaluated on every version, retained as
+           cluster resources.</p>
+      </div>
+      <div class="card">
+        <span class="tag">MANAGE 1.4</span>
+        <h3>Residual risk documented</h3>
+        <p>A waived policy violation <em>is</em> the unmitigated risk set. Each one records
+           what was accepted, by whom, and until when — which is precisely what this
+           control asks for.</p>
+      </div>
+      <div class="card">
+        <span class="tag">MANAGE 3.2</span>
+        <h3>Pre-trained models monitored</h3>
+        <p>Monitoring third-party pre-trained models as part of regular maintenance is the
+           product's exact purpose, so this one maps cleanly rather than by stretch.</p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <h3>What the report refuses to do</h3>
+      <p>
+        A control that no scanner can observe — that staff are trained, that a diverse team
+        reviewed a decision — can never come back Satisfied from a scan. It requires a
+        named attestation with an expiry, or it stays open and visible.
+      </p>
+      <p>
+        Nothing is inferred across trustworthiness characteristics. A clean security scan
+        says <em>nothing</em> about fairness, so <code>MEASURE 2.11</code> stays open until
+        bias evaluation ships in Phase 2. Every assessment also publishes the
+        characteristics it did not measure — validity, behavioural safety, explainability —
+        because <code>MEASURE 1.1</code> asks for exactly that, and because a coverage
+        claim without it is a lie of omission.
+      </p>
+    </div>
+
+    <pre><span class="c"># A clean scan is not framework conformance, and the report says so</span>
+$ kubectl get compliancereports -n zeus-system
+NAME                      MODEL           FRAMEWORK        CONFORMANT   OPEN
+cr-llama-guard-v1-4-0     llama-guard     nist-ai-rmf-1.0  <span class="s">false</span>        41
+
+<span class="c"># Attestations close what scanning cannot — with a named owner and an expiry</span>
+<span class="k">attestations:</span>
+  - <span class="k">controlID:</span> <span class="s">"GOVERN 2.2"</span>
+    <span class="k">statement:</span> <span class="s">All ML platform staff completed AI risk training.</span>
+    <span class="k">attestedBy:</span> <span class="s">head-of-ml-governance</span>
+    <span class="k">expiresAt:</span> <span class="s">"2027-06-15T00:00:00Z"</span></pre>
   </div>
 </section>
 

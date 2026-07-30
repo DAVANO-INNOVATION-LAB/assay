@@ -129,6 +129,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := (&controller.ComplianceReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		// Revocation only counts as a control when something enforces it, so
+		// the assessment is told whether the gate is actually running.
+		AdmissionEnforcing: enableWebhook,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Compliance")
+		os.Exit(1)
+	}
+
 	if enableWebhook {
 		if err := (&zeuswebhook.ModelGate{
 			Client:        mgr.GetClient(),
