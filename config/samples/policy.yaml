@@ -1,0 +1,54 @@
+---
+# A production baseline: no malware, no live secrets, no critical CVEs, and
+# no pickle-format weights. Enforcement rejects failing deployments outright.
+apiVersion: security.zeus.io/v1alpha1
+kind: ArtifactScanPolicy
+metadata:
+  name: production-baseline
+  namespace: zeus-system
+spec:
+  enforcement: Enforce
+  scanners:
+    - name: clamav
+    - name: trivy
+    - name: syft
+    - name: trufflehog
+    - name: model-inspector
+    - name: provenance
+  rules:
+    maxCriticalCVEs: 0
+    maxHighCVEs: 5
+    blockMalware: true
+    blockSecrets: true
+    # Quarantine on a critical model-inspection finding: a pickle importing
+    # os.system, an archive escaping its directory, trust_remote_code. These
+    # execute on load, so they are treated as seriously as malware.
+    blockUnsafeModel: true
+    requireSBOM: true
+    requireSignature: false
+    blockedFormats:
+      - pickle
+    allowedFormats:
+      - safetensors
+      - onnx
+      - gguf
+---
+# A permissive policy for development namespaces: the same scanners run and
+# results are recorded, but nothing is blocked. Use this to measure the blast
+# radius of a stricter policy before enforcing it.
+apiVersion: security.zeus.io/v1alpha1
+kind: ArtifactScanPolicy
+metadata:
+  name: development-audit
+  namespace: zeus-system
+spec:
+  enforcement: Audit
+  scanners:
+    - name: clamav
+    - name: trivy
+    - name: syft
+    - name: model-inspector
+  rules:
+    blockMalware: true
+    blockSecrets: true
+    blockUnsafeModel: true

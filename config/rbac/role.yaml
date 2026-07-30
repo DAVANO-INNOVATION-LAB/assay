@@ -1,0 +1,76 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: zeus-manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - security.zeus.io
+  resources:
+  - artifactexceptions
+  - artifactscanpolicies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - security.zeus.io
+  resources:
+  - artifactscanreports
+  - artifactscans
+  - modelregistryconnectors
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - security.zeus.io
+  resources:
+  - artifactscans/status
+  - modelregistryconnectors/status
+  - modelsecurityreports/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - security.zeus.io
+  resources:
+  - modelsecurityreports
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch

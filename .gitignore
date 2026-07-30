@@ -1,0 +1,26 @@
+# Build output
+bin/
+dist/
+
+# Test and coverage artifacts
+cover.out
+*.test
+
+# Local tool installs
+hack/tools/
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Never commit credentials or kubeconfigs
+*.kubeconfig
+kubeconfig
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/testdata/*.key

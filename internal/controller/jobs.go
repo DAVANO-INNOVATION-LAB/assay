@@ -1,0 +1,318 @@
+package controller
+
+import (
+	"fmt"
+	"strings"
+
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
+	"github.com/zeus-security/zeus-operator/internal/scanners"
+)
+
+// Paths inside the scan pod.
+const (
+	workspacePath = "/workspace"
+	resultsPath   = "/results"
+	tmpPath       = "/tmp"
+)
+
+// Labels Zeus puts on scan Jobs so the controller can find them again.
+const (
+	LabelScan      = "security.zeus.io/scan"
+	LabelScanner   = "security.zeus.io/scanner"
+	LabelManagedBy = "app.kubernetes.io/managed-by"
+	ManagerName    = "zeus-operator"
+)
+
+// JobConfig holds the cluster-level settings the orchestrator needs.
+type JobConfig struct {
+	// OperatorImage is the Zeus image, used for the fetch and publish steps
+	// and for scanners implemented by the Zeus runner.
+	OperatorImage string
+	// ScannerRegistry is the host and namespace holding the scanner images.
+	// Air-gapped clusters set this to their mirror. Empty uses the default.
+	ScannerRegistry string
+	// ServiceAccount the scan pods run as.
+	ServiceAccount string
+	// PullSecret is mounted as a Docker config for OCI artifact pulls.
+	PullSecret string
+	// StorageSecret projects S3 credentials into the fetch step.
+	StorageSecret string
+	// WorkspaceSize is the emptyDir size limit for staged artifacts.
+	WorkspaceSize resource.Quantity
+	// TmpSize is the emptyDir size limit for scanner scratch space.
+	TmpSize resource.Quantity
+	// TTLSecondsAfterFinished garbage-collects completed scan Jobs.
+	TTLSecondsAfterFinished int32
+}
+
+// buildScanJob assembles the Job for one scanner against one artifact.
+//
+// The pod runs three steps in order:
+//
+//	fetch (init)   resolve the artifact URI and stage bytes into /workspace
+//	scan  (init)   run the scanner over /workspace, writing to /results
+//	publish        parse /results and create the ArtifactScanReport
+//
+// Using init containers for fetch and scan means the publish step only runs
+// after both have finished, and it is the single place that talks to the API
+// server — the scanner containers themselves get no cluster credentials.
+func buildScanJob(scan *securityv1alpha1.ArtifactScan, def scanners.Definition, spec *securityv1alpha1.ScannerSpec, cfg JobConfig) (*batchv1.Job, error) {
+	if cfg.OperatorImage == "" {
+		return nil, fmt.Errorf("operator image is not configured")
+	}
+
+	image := scanners.ResolveImage(def, cfg.ScannerRegistry, cfg.OperatorImage)
+	args := def.Args
+	command := def.Command
+	timeout := int64(1800)
+
+	if spec != nil {
+		if spec.Image != "" {
+			image = spec.Image
+		}
+		if len(spec.Args) > 0 {
+			args = spec.Args
+		}
+		if spec.TimeoutSeconds != nil {
+			timeout = *spec.TimeoutSeconds
+		}
+	}
+
+	args = substitutePaths(args)
+	command = substitutePaths(command)
+
+	workspaceSize := cfg.WorkspaceSize
+	if workspaceSize.IsZero() {
+		workspaceSize = resource.MustParse("50Gi")
+	}
+
+	// Bounded so a scanner that streams an artifact into /tmp cannot fill the
+	// node's ephemeral storage.
+	tmpSize := cfg.TmpSize
+	if tmpSize.IsZero() {
+		tmpSize = resource.MustParse("8Gi")
+	}
+
+	volumes := []corev1.Volume{
+		{
+			Name: "workspace",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{SizeLimit: &workspaceSize},
+			},
+		},
+		{
+			Name:         "results",
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		},
+		{
+			// Scanner containers run with a read-only root filesystem, but
+			// every one of these tools needs scratch space: Trivy for its
+			// cache, ClamAV for temporary extraction, Syft for unpacking.
+			// A writable /tmp is what lets the hardening hold.
+			Name: "tmp",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{SizeLimit: &tmpSize},
+			},
+		},
+	}
+	mounts := []corev1.VolumeMount{
+		{Name: "workspace", MountPath: workspacePath},
+		{Name: "results", MountPath: resultsPath},
+		{Name: "tmp", MountPath: tmpPath},
+	}
+
+	fetchMounts := mounts
+	if cfg.PullSecret != "" {
+		volumes = append(volumes, corev1.Volume{
+			Name: "pull-secret",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: cfg.PullSecret,
+					Items: []corev1.KeyToPath{
+						{Key: corev1.DockerConfigJsonKey, Path: "config.json"},
+					},
+				},
+			},
+		})
+		fetchMounts = append(append([]corev1.VolumeMount{}, mounts...),
+			corev1.VolumeMount{Name: "pull-secret", MountPath: "/docker", ReadOnly: true})
+	}
+
+	fetchEnv := []corev1.EnvVar{{Name: "DOCKER_CONFIG", Value: "/docker"}}
+	if cfg.StorageSecret != "" {
+		fetchEnv = append(fetchEnv, corev1.EnvVar{
+			Name: "AWS_ACCESS_KEY_ID",
+			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: cfg.StorageSecret},
+				Key:                  "AWS_ACCESS_KEY_ID",
+				Optional:             ptr(true),
+			}},
+		}, corev1.EnvVar{
+			Name: "AWS_SECRET_ACCESS_KEY",
+			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: cfg.StorageSecret},
+				Key:                  "AWS_SECRET_ACCESS_KEY",
+				Optional:             ptr(true),
+			}},
+		}, corev1.EnvVar{
+			Name: "AWS_S3_ENDPOINT",
+			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: cfg.StorageSecret},
+				Key:                  "AWS_S3_ENDPOINT",
+				Optional:             ptr(true),
+			}},
+		}, corev1.EnvVar{
+			Name: "AWS_REGION",
+			ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: cfg.StorageSecret},
+				Key:                  "AWS_DEFAULT_REGION",
+				Optional:             ptr(true),
+			}},
+		})
+	}
+
+	scanResources := corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("200m"),
+			corev1.ResourceMemory: resource.MustParse("512Mi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resource.MustParse("2"),
+			corev1.ResourceMemory: resource.MustParse("4Gi"),
+		},
+	}
+	if spec != nil && (len(spec.Resources.Requests) > 0 || len(spec.Resources.Limits) > 0) {
+		scanResources = spec.Resources
+	}
+
+	// Scanner containers process untrusted bytes, so they run with no
+	// privileges, no cluster credentials, and a read-only root filesystem.
+	hardened := &corev1.SecurityContext{
+		AllowPrivilegeEscalation: ptr(false),
+		ReadOnlyRootFilesystem:   ptr(true),
+		RunAsNonRoot:             ptr(true),
+		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+		SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+	}
+
+	jobName := scanJobName(scan.Name, def.Name)
+
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      jobName,
+			Namespace: scan.Namespace,
+			Labels: map[string]string{
+				LabelScan:      scan.Name,
+				LabelScanner:   def.Name,
+				LabelManagedBy: ManagerName,
+			},
+		},
+		Spec: batchv1.JobSpec{
+			BackoffLimit:            ptr(int32(1)),
+			ActiveDeadlineSeconds:   &timeout,
+			TTLSecondsAfterFinished: ptr(cfg.TTLSecondsAfterFinished),
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						LabelScan:      scan.Name,
+						LabelScanner:   def.Name,
+						LabelManagedBy: ManagerName,
+					},
+				},
+				Spec: corev1.PodSpec{
+					RestartPolicy:      corev1.RestartPolicyNever,
+					ServiceAccountName: cfg.ServiceAccount,
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot:   ptr(true),
+						SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+					},
+					Volumes: volumes,
+					InitContainers: []corev1.Container{
+						{
+							Name:    "fetch",
+							Image:   cfg.OperatorImage,
+							Command: []string{"/zeus-runner"},
+							Args: []string{
+								"fetch",
+								"--uri", scan.Spec.Artifact.URI,
+								"--dest", workspacePath,
+								"--metadata", resultsPath + "/artifact.json",
+							},
+							Env:             fetchEnv,
+							VolumeMounts:    fetchMounts,
+							SecurityContext: hardened,
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("200m"),
+									corev1.ResourceMemory: resource.MustParse("512Mi"),
+								},
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("2"),
+									corev1.ResourceMemory: resource.MustParse("2Gi"),
+								},
+							},
+						},
+						{
+							Name:            "scan",
+							Image:           image,
+							Command:         command,
+							Args:            args,
+							VolumeMounts:    mounts,
+							SecurityContext: hardened,
+							Resources:       scanResources,
+						},
+					},
+					Containers: []corev1.Container{
+						{
+							Name:    "publish",
+							Image:   cfg.OperatorImage,
+							Command: []string{"/zeus-runner"},
+							Args: []string{
+								"publish",
+								"--scan", scan.Name,
+								"--namespace", scan.Namespace,
+								"--scanner", def.Name,
+								"--format", def.ResultFormat,
+								"--results", resultsPath + "/" + def.OutputFile,
+								"--metadata", resultsPath + "/artifact.json",
+							},
+							VolumeMounts:    mounts,
+							SecurityContext: hardened,
+							Resources: corev1.ResourceRequirements{
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceMemory: resource.MustParse("128Mi"),
+								},
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("500m"),
+									corev1.ResourceMemory: resource.MustParse("512Mi"),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	return job, nil
+}
+
+func substitutePaths(args []string) []string {
+	if len(args) == 0 {
+		return nil
+	}
+	out := make([]string, len(args))
+	for i, arg := range args {
+		arg = strings.ReplaceAll(arg, scanners.PlaceholderWorkspace, workspacePath)
+		out[i] = strings.ReplaceAll(arg, scanners.PlaceholderResults, resultsPath)
+	}
+	return out
+}
+
+func ptr[T any](v T) *T { return &v }
