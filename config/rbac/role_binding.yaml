@@ -1,0 +1,46 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: zeus-manager-rolebinding
+  labels:
+    app.kubernetes.io/name: zeus-model-scanner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: zeus-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: zeus-controller-manager
+    namespace: zeus-system
+---
+# Leader election for the manager's active replica.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zeus-leader-election-role
+  namespace: zeus-system
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: zeus-leader-election-rolebinding
+  namespace: zeus-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: zeus-leader-election-role
+subjects:
+  - kind: ServiceAccount
+    name: zeus-controller-manager
+    namespace: zeus-system

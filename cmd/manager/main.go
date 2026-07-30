@@ -1,0 +1,157 @@
+// Command manager runs the Zeus Model Scanner operator: the Model Registry
+// connector, the scan orchestrator, and the admission gate.
+package main
+
+import (
+	"flag"
+	"os"
+
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
+	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
+	"github.com/zeus-security/zeus-operator/internal/controller"
+	zeuswebhook "github.com/zeus-security/zeus-operator/internal/webhook"
+)
+
+var (
+	scheme   = runtime.NewScheme()
+	setupLog = ctrl.Log.WithName("setup")
+)
+
+func init() {
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+	if err := securityv1alpha1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+}
+
+func main() {
+	var (
+		metricsAddr          string
+		probeAddr            string
+		enableLeaderElection bool
+		enableWebhook        bool
+		operatorImage        string
+		scannerRegistry      string
+		scanServiceAccount   string
+		pullSecret           string
+		storageSecret        string
+		workspaceSize        string
+		jobTTLSeconds        int
+		defaultPolicy        string
+		requireReport        bool
+	)
+
+	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "address the metric endpoint binds to")
+	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "address the probe endpoint binds to")
+	flag.BoolVar(&enableLeaderElection, "leader-elect", true, "enable leader election for controller manager")
+	flag.BoolVar(&enableWebhook, "enable-webhook", true, "serve the model deployment admission webhook")
+	flag.StringVar(&operatorImage, "operator-image", os.Getenv("ZEUS_OPERATOR_IMAGE"),
+		"Zeus image used for the fetch, publish, and built-in scanner steps")
+	flag.StringVar(&scannerRegistry, "scanner-registry", os.Getenv("ZEUS_SCANNER_REGISTRY"),
+		"registry host and namespace holding the scanner images; set this to a mirror for air-gapped clusters")
+	flag.StringVar(&scanServiceAccount, "scan-service-account", "zeus-scanner",
+		"service account scan jobs run as")
+	flag.StringVar(&pullSecret, "pull-secret", os.Getenv("ZEUS_PULL_SECRET"),
+		"name of a dockerconfigjson Secret mounted into scan jobs for OCI pulls")
+	flag.StringVar(&storageSecret, "storage-secret", os.Getenv("ZEUS_STORAGE_SECRET"),
+		"name of a Secret holding S3/ODF credentials for artifact fetches")
+	flag.StringVar(&workspaceSize, "workspace-size", "50Gi",
+		"size limit for the scan workspace volume")
+	flag.IntVar(&jobTTLSeconds, "job-ttl-seconds", 3600,
+		"seconds to retain completed scan jobs")
+	flag.StringVar(&defaultPolicy, "default-policy", os.Getenv("ZEUS_DEFAULT_POLICY"),
+		"policy consulted by the admission gate when a workload names none")
+	flag.BoolVar(&requireReport, "require-report", false,
+		"deny workloads that reference a model with no Zeus security report")
+
+	opts := zap.Options{Development: false}
+	opts.BindFlags(flag.CommandLine)
+	flag.Parse()
+
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if operatorImage == "" {
+		setupLog.Error(nil, "operator image is required; set --operator-image or ZEUS_OPERATOR_IMAGE")
+		os.Exit(1)
+	}
+
+	parsedWorkspaceSize, err := resource.ParseQuantity(workspaceSize)
+	if err != nil {
+		setupLog.Error(err, "invalid --workspace-size")
+		os.Exit(1)
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+		Scheme:                 scheme,
+		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
+		HealthProbeBindAddress: probeAddr,
+		LeaderElection:         enableLeaderElection,
+		LeaderElectionID:       "zeus-model-scanner.security.zeus.io",
+	})
+	if err != nil {
+		setupLog.Error(err, "unable to start manager")
+		os.Exit(1)
+	}
+
+	jobConfig := controller.JobConfig{
+		OperatorImage:           operatorImage,
+		ScannerRegistry:         scannerRegistry,
+		ServiceAccount:          scanServiceAccount,
+		PullSecret:              pullSecret,
+		StorageSecret:           storageSecret,
+		WorkspaceSize:           parsedWorkspaceSize,
+		TTLSecondsAfterFinished: int32(jobTTLSeconds),
+	}
+
+	if err := (&controller.ModelRegistryConnectorReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ModelRegistryConnector")
+		os.Exit(1)
+	}
+
+	if err := (&controller.ArtifactScanReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		JobConfig: jobConfig,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ArtifactScan")
+		os.Exit(1)
+	}
+
+	if enableWebhook {
+		if err := (&zeuswebhook.ModelGate{
+			Client:        mgr.GetClient(),
+			DefaultPolicy: defaultPolicy,
+			RequireReport: requireReport,
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to set up admission webhook")
+			os.Exit(1)
+		}
+	}
+
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		setupLog.Error(err, "unable to set up health check")
+		os.Exit(1)
+	}
+	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		setupLog.Error(err, "unable to set up ready check")
+		os.Exit(1)
+	}
+
+	setupLog.Info("starting Zeus Model Scanner", "webhook", enableWebhook, "image", operatorImage)
+	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+		setupLog.Error(err, "problem running manager")
+		os.Exit(1)
+	}
+}

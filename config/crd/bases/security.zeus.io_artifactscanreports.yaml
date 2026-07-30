@@ -1,0 +1,145 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.2
+  name: artifactscanreports.security.zeus.io
+spec:
+  group: security.zeus.io
+  names:
+    kind: ArtifactScanReport
+    listKind: ArtifactScanReportList
+    plural: artifactscanreports
+    singular: artifactscanreport
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .scanner
+      name: Scanner
+      type: string
+    - jsonPath: .scanRef
+      name: Scan
+      type: string
+    - jsonPath: .summary.status
+      name: Status
+      type: string
+    - jsonPath: .summary.findings
+      name: Findings
+      type: integer
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ArtifactScanReport holds the detailed findings of a single scanner run.
+          Detailed data lives here so ArtifactScan and ModelSecurityReport stay small.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          findings:
+            items:
+              description: Finding is a single detailed security finding.
+              properties:
+                category:
+                  description: Category of the finding (malware, cve, secret, license,
+                    model, provenance).
+                  type: string
+                description:
+                  type: string
+                id:
+                  description: ID is the finding identifier (e.g. CVE-2025-1234, signature
+                    name).
+                  type: string
+                location:
+                  description: Location within the artifact (file path, layer, tensor
+                    name).
+                  type: string
+                severity:
+                  enum:
+                  - Critical
+                  - High
+                  - Medium
+                  - Low
+                  - Unknown
+                  type: string
+                title:
+                  type: string
+              type: object
+            type: array
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          scanRef:
+            description: ScanRef names the owning ArtifactScan.
+            type: string
+          scanner:
+            description: Scanner that produced this report.
+            type: string
+          summary:
+            description: ScannerResult is the per-scanner outcome of a scan.
+            properties:
+              completionTime:
+                format: date-time
+                type: string
+              findings:
+                description: Findings is the total number of findings the scanner
+                  reported.
+                format: int32
+                type: integer
+              message:
+                type: string
+              reportRef:
+                description: ReportRef names the ArtifactScanReport holding detailed
+                  findings.
+                type: string
+              scanner:
+                description: Scanner is the scanner name (e.g. clamav, trivy, model-inspector).
+                type: string
+              severities:
+                description: SeverityCounts summarizes findings by severity.
+                properties:
+                  critical:
+                    format: int32
+                    type: integer
+                  high:
+                    format: int32
+                    type: integer
+                  low:
+                    format: int32
+                    type: integer
+                  medium:
+                    format: int32
+                    type: integer
+                  unknown:
+                    format: int32
+                    type: integer
+                type: object
+              status:
+                enum:
+                - Pending
+                - Running
+                - Passed
+                - Failed
+                - Error
+                - Skipped
+                type: string
+            required:
+            - scanner
+            - status
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}

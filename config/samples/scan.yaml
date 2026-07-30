@@ -1,0 +1,50 @@
+---
+# Scans are normally created by the ModelRegistryConnector. Creating one by
+# hand is how you scan an artifact that is not in the registry yet, or re-run
+# a scan against a specific digest.
+apiVersion: security.zeus.io/v1alpha1
+kind: ArtifactScan
+metadata:
+  name: scan-fraud-detector-v2
+  namespace: zeus-system
+spec:
+  modelName: fraud-detector
+  modelVersion: v2.1.0
+  policyRef: production-baseline
+  artifact:
+    uri: s3://models/fraud-detector/v2.1.0/
+    format: safetensors
+---
+# An exception waives specific policy rules for one model version. It must
+# carry a reason and should carry an expiry: an exception without one is a
+# permanent hole in the policy.
+apiVersion: security.zeus.io/v1alpha1
+kind: ArtifactException
+metadata:
+  name: fraud-detector-v2-cve-waiver
+  namespace: zeus-system
+spec:
+  modelName: fraud-detector
+  modelVersion: v2.1.0
+  rules:
+    - maxHighCVEs
+  reason: >-
+    CVE-2024-2222 in the bundled numpy is not reachable from the inference
+    path; upstream fix lands in the next base image refresh.
+  approvedBy: security-team
+  expiresAt: "2026-10-01T00:00:00Z"
+---
+# A publisher whose signatures Zeus trusts, for policies with
+# requireSignature: true.
+apiVersion: security.zeus.io/v1alpha1
+kind: TrustedPublisher
+metadata:
+  name: platform-ml-team
+  namespace: zeus-system
+spec:
+  displayName: Platform ML Team
+  keylessIdentity:
+    issuer: https://token.actions.githubusercontent.com
+    subject: https://github.com/acme/models/.github/workflows/publish.yaml@refs/heads/main
+  uriPrefixes:
+    - oci://registry.acme.internal/models/

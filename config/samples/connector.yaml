@@ -1,0 +1,28 @@
+---
+# Connects Zeus to the OpenShift AI Model Registry. Every model version the
+# registry knows about gets an ArtifactScan, and the verdict is written back
+# as custom properties so it shows up in the registry UI.
+apiVersion: security.zeus.io/v1alpha1
+kind: ModelRegistryConnector
+metadata:
+  name: rhoai-registry
+  namespace: zeus-system
+spec:
+  registryURL: https://modelregistry-sample.rhoai-model-registries.svc.cluster.local:8080
+  authSecretRef:
+    name: model-registry-token
+    key: token
+  pollInterval: 60s
+  policyRef: production-baseline
+  writeBack: true
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: model-registry-token
+  namespace: zeus-system
+type: Opaque
+stringData:
+  # Replace with a token for a service account that can read the registry and
+  # patch model version properties.
+  token: REPLACE_ME

@@ -1,0 +1,1 @@
+/workspace/suspicious.dat: Eicar-Test-Signature FOUND
