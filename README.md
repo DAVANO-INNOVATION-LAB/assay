@@ -1,9 +1,14 @@
 # Zeus Model Scanner
 
+**A Davano Innovation Lab project.**
+
 An OpenShift-native security platform for AI models. Zeus integrates directly
 with the OpenShift AI Model Registry, scans every registered model version,
 and blocks unapproved models at deployment time — the way Advanced Cluster
 Security works for containers, but purpose-built for model artifacts.
+
+The marketing and technical overview site lives in [`web/`](web/) and deploys
+to Netlify from [`netlify.toml`](netlify.toml).
 
 ## Why the Model Registry is the integration point
 
