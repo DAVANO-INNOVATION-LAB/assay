@@ -6,41 +6,51 @@
 <title>Zeus Model Scanner — Davano Innovation Lab</title>
 <meta name="description" content="OpenShift-native AI model security from Davano Innovation Lab. Reads model artifacts by format — safetensors, ONNX, GGUF, pickle — scans every version registered in the OpenShift AI Model Registry, and blocks unapproved models at deployment.">
 <meta name="color-scheme" content="dark light">
-<meta name="theme-color" content="#080806">
+<meta name="theme-color" content="#0a0d14">
 
 <meta property="og:type" content="website">
 <meta property="og:title" content="Zeus Model Scanner — Davano Innovation Lab">
 <meta property="og:description" content="A model is executable code. Zeus reads the serialization format, finds what executes on load, and gates the deployment.">
 
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23080806'/%3E%3Cpath d='M13 3 4.8 13.4h5.7L9.9 21l8.7-11.2h-6z' fill='%23ffe800'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230a0d14'/%3E%3Cpath d='M13 3 4.8 13.4h5.7L9.9 21l8.7-11.2h-6z' fill='%233b82f6'/%3E%3C/svg%3E">
 
 <style>
 :root {
-  --bg: #080806;
-  --bg-raised: #101009;
-  --bg-inset: #050504;
-  --border: #23231a;
-  --border-bright: #343428;
-  --text: #f6f4e9;
-  --text-dim: #b2ae97;
-  --text-faint: #928e78;
-  /* Davano hyper yellow.
-     --accent is the brand colour and stays identical in both themes so the
-     page reads yellow either way. --accent-text is the variant safe as text
-     on the page background, and --accent-ink is what sits on top of accent
-     fills. Separating the three is what lets light mode use the real yellow
-     as a highlight instead of degrading it to a dull bronze. */
-  --accent: #ffe800;
-  --accent-text: #ffe800;
-  --accent-ink: #14120a;
-  --accent-glow: rgba(255, 232, 0, .22);
-  --accent-soft: rgba(255, 232, 0, .13);
-  --critical: #ff4d5e;
-  --high: #ff8a3d;
-  /* Muted amber rather than a bright yellow: against a hyper-yellow accent,
-     a yellow warning chip reads as branding instead of as a severity. */
-  --medium: #c9962a;
-  --low: #45c98a;
+  /* Blue-black canvas rather than neutral: it reads as instrumentation and
+     keeps the cobalt from looking pasted onto a grey page. */
+  --bg: #0a0d14;
+  --bg-raised: #121722;
+  --bg-inset: #070910;
+  --border: #1e2534;
+  --border-bright: #2c3547;
+  --text: #e8ecf4;
+  --text-dim: #9aa5ba;
+  --text-faint: #7e8ba1;
+
+  /* Cobalt is the brand. The governing rule for a security product: the
+     brand colour must never appear in the severity ramp, or every warning
+     chip competes with it. Amber failed that test; cobalt sits outside it.
+     Being adjacent to PatternFly blue is deliberate — the console plugin
+     should read as native to OpenShift rather than bolted on. */
+  /* Deep enough that white ink on a filled chip or button clears AA — a
+     brighter cobalt looks better in isolation but only reaches 3.7:1 under
+     white text, which is the most common way blue brands fail. Text sitting
+     directly on the canvas uses the lighter --accent-text instead. */
+  --accent: #2563eb;
+  --accent-text: #6da5fb;
+  --accent-ink: #ffffff;
+  --accent-glow: rgba(59, 130, 246, .26);
+  --accent-soft: rgba(59, 130, 246, .14);
+
+  /* Electric cyan carries live and technical values — digests, model IDs,
+     step numbers. It gives the instrument-panel energy the yellow had,
+     without ever being mistaken for a warning. */
+  --electric: #22d3ee;
+
+  --critical: #fb7185;
+  --high: #fb923c;
+  --medium: #fbbf24;
+  --low: #34d399;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
   --maxw: 1080px;
@@ -48,28 +58,31 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #fdfdfa;
+    --bg: #fafbfd;
     --bg-raised: #ffffff;
-    --bg-inset: #f4f4ec;
-    --border: #e4e4d7;
-    --border-bright: #ccccbc;
-    --text: #14140c;
-    --text-dim: #52524a;
-    --text-faint: #5f5f56;
-    /* The brand yellow is kept exactly as-is and used as a fill, with dark
-       ink on top. Only accent-as-text drops to a bronze, because yellow text
-       on white is unreadable at any weight. */
-    --accent: #ffe800;
-    --accent-text: #5c4700;
-    --accent-ink: #14120a;
-    --accent-glow: rgba(255, 232, 0, .38);
-    --accent-soft: rgba(255, 232, 0, .3);
+    --bg-inset: #f1f4f9;
+    --border: #dde3ec;
+    --border-bright: #c3ccda;
+    --text: #0d1220;
+    --text-dim: #4a5568;
+    --text-faint: #5b6678;
+
+    /* Cobalt survives light mode as text, which the yellow never could —
+       so the accent needs no highlighter trick here, just a deeper tone. */
+    --accent: #1d4ed8;
+    --accent-text: #1d4ed8;
+    --accent-ink: #ffffff;
+    --accent-glow: rgba(29, 78, 216, .16);
+    --accent-soft: rgba(29, 78, 216, .09);
+
+    --electric: #0a5f78;
+
     /* Severity tones are measured against their own tinted chip background,
        not the page, so they run darker than they look like they need to. */
-    --critical: #a3132a;
-    --high: #8a4207;
-    --medium: #665008;
-    --low: #05613c;
+    --critical: #ad1036;
+    --high: #a63709;
+    --medium: #7a4a05;
+    --low: #036545;
   }
 }
 
@@ -135,17 +148,8 @@ header {
   flex: none; box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .hero h1 { font-size: clamp(2.05rem, 5.4vw, 3.5rem); max-width: 17ch; }
-.hero h1 em { font-style: normal; color: var(--accent-text); text-shadow: 0 0 32px var(--accent-glow); }
-/* Light mode gets the real brand yellow as a highlighter band behind dark
-   text, which keeps contrast while still reading unmistakably yellow. */
-@media (prefers-color-scheme: light) {
-  .hero h1 em {
-    color: var(--text); text-shadow: none;
-    background: linear-gradient(180deg, transparent 58%, var(--accent) 58%);
-    padding: 0 .08em;
-    -webkit-box-decoration-break: clone; box-decoration-break: clone;
-  }
-}
+.hero h1 em { font-style: normal; color: var(--accent-text); text-shadow: 0 0 34px var(--accent-glow); }
+@media (prefers-color-scheme: light) { .hero h1 em { text-shadow: none; } }
 .lede { font-size: clamp(1.02rem, 2vw, 1.17rem); color: var(--text-dim); max-width: 62ch; margin: 22px 0 0; }
 .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
 .btn {
@@ -160,8 +164,8 @@ header {
 
 /* ---------- sections ---------- */
 section { padding: 72px 0; border-top: 1px solid var(--border); }
-/* A filled chip rather than coloured text: the brand yellow then renders
-   identically in both themes instead of degrading to bronze in light mode. */
+/* A filled chip rather than coloured text, so the brand reads at the same
+   weight in both themes instead of thinning out on a light background. */
 .sec-label {
   display: inline-block; font-family: var(--mono); font-size: .7rem;
   font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
@@ -183,7 +187,7 @@ p.sub { color: var(--text-dim); max-width: 66ch; margin: 16px 0 0; }
   background: var(--bg-inset);
 }
 .model-id { display: flex; align-items: baseline; gap: 9px; font-family: var(--mono); font-size: .92rem; }
-.model-id b { font-weight: 700; letter-spacing: -.01em; color: var(--accent-text); }
+.model-id b { font-weight: 700; letter-spacing: -.01em; color: var(--electric); }
 .model-id span { color: var(--text-faint); font-size: .82rem; }
 .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-left: auto; }
 .chip {
@@ -271,7 +275,7 @@ td.state { white-space: nowrap; }
 }
 .stage h4 { margin: 0 0 6px; font-size: .84rem; font-weight: 600; }
 .stage p { margin: 0; font-size: .75rem; color: var(--text-faint); line-height: 1.5; }
-.stage .num { font-family: var(--mono); font-size: .67rem; color: var(--accent-text); display: block; margin-bottom: 7px; letter-spacing: .08em; }
+.stage .num { font-family: var(--mono); font-size: .67rem; color: var(--electric); display: block; margin-bottom: 7px; letter-spacing: .08em; }
 
 /* ---------- cards ---------- */
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 17px; margin-top: 36px; }
@@ -281,7 +285,7 @@ td.state { white-space: nowrap; }
 .card:hover { border-color: var(--border-bright); }
 .card h3 { font-size: .96rem; margin-bottom: 8px; }
 .card p { margin: 0; font-size: .85rem; color: var(--text-dim); line-height: 1.6; }
-.card .tag { font-family: var(--mono); font-size: .67rem; color: var(--accent-text); letter-spacing: .06em; text-transform: uppercase; display: block; margin-bottom: 9px; }
+.card .tag { font-family: var(--mono); font-size: .67rem; color: var(--electric); letter-spacing: .06em; text-transform: uppercase; display: block; margin-bottom: 9px; }
 
 /* ---------- code ---------- */
 pre {
@@ -291,7 +295,7 @@ pre {
   margin: 22px 0 0; color: var(--text-dim);
 }
 pre .c { color: var(--text-faint); }
-pre .k { color: var(--accent-text); }
+pre .k { color: var(--electric); }
 pre .s { color: var(--low); }
 
 /* ---------- callout ---------- */
