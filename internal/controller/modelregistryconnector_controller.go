@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/metrics"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/registry"
 )
 
@@ -31,8 +32,27 @@ type ModelRegistryConnectorReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
+	// SecretReader reads credential Secrets without going through the
+	// manager's cache.
+	//
+	// A cached Get on a Secret starts an informer over every Secret in the
+	// cluster and holds them all in memory — for a controller that needs one
+	// key from one Secret per poll, on a pod limited to 512Mi. It also means a
+	// compromised manager leaks far more than it needs. Set this to
+	// mgr.GetAPIReader(); it falls back to the cached client when nil so tests
+	// keep working with a single fake.
+	SecretReader client.Reader
+
 	// NewClient builds a registry client. Overridden in tests.
 	NewClient func(registry.Options) RegistryClient
+}
+
+// secrets returns the reader used for credential lookups.
+func (r *ModelRegistryConnectorReconciler) secrets() client.Reader {
+	if r.SecretReader != nil {
+		return r.SecretReader
+	}
+	return r.Client
 }
 
 // RegistryClient is the subset of the Model Registry API the connector uses.
@@ -54,7 +74,9 @@ const (
 
 // +kubebuilder:rbac:groups=security.davano.io,resources=modelregistryconnectors,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=security.davano.io,resources=modelregistryconnectors/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// Read uncached via the API reader, so list/watch (which exist only to feed a
+// cache) are not needed.
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 // Reconcile polls the registry once and requeues after the poll interval.
 func (r *ModelRegistryConnectorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -100,6 +122,7 @@ func (r *ModelRegistryConnectorReconciler) Reconcile(ctx context.Context, req ct
 	var (
 		versionCount int32
 		scansCreated int32
+		syncFailures int
 	)
 
 	for _, model := range models {
@@ -110,6 +133,8 @@ func (r *ModelRegistryConnectorReconciler) Reconcile(ctx context.Context, req ct
 		versions, err := rc.ListModelVersions(ctx, model.ID)
 		if err != nil {
 			logger.Error(err, "list model versions", "model", model.Name)
+			syncFailures++
+			metrics.SourceSyncFailures.WithLabelValues("model-registry", "list_versions").Inc()
 			continue
 		}
 		versionCount += int32(len(versions))
@@ -118,6 +143,8 @@ func (r *ModelRegistryConnectorReconciler) Reconcile(ctx context.Context, req ct
 			created, err := r.syncVersion(ctx, &connector, rc, model, version)
 			if err != nil {
 				logger.Error(err, "sync model version", "model", model.Name, "version", version.Name)
+				syncFailures++
+				metrics.SourceSyncFailures.WithLabelValues("model-registry", "sync_version").Inc()
 				continue
 			}
 			scansCreated += created
@@ -125,18 +152,35 @@ func (r *ModelRegistryConnectorReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	now := metav1.Now()
-	connector.Status.Phase = "Connected"
-	connector.Status.Message = ""
 	connector.Status.LastSyncTime = &now
 	connector.Status.RegisteredModels = int32(len(models))
 	connector.Status.ModelVersions = versionCount
 	connector.Status.ScansCreated += scansCreated
-	setCondition(&connector.Status.Conditions, metav1.Condition{
-		Type:    "Ready",
-		Status:  metav1.ConditionTrue,
-		Reason:  "SyncSucceeded",
-		Message: fmt.Sprintf("synced %d models, %d versions", len(models), versionCount),
-	})
+	metrics.ModelsTracked.WithLabelValues("model-registry", connector.Name).Set(float64(versionCount))
+
+	// Per-model failures were logged and swallowed, so a connector where every
+	// single model failed still reported Connected and Ready — a completely
+	// broken sync that looks healthy in `kubectl get`. Partial failure is now
+	// its own state: the connector reached the registry, but did not finish.
+	if syncFailures > 0 {
+		connector.Status.Phase = "Degraded"
+		connector.Status.Message = fmt.Sprintf("%d model(s) failed to sync; see operator logs", syncFailures)
+		setCondition(&connector.Status.Conditions, metav1.Condition{
+			Type:    "Ready",
+			Status:  metav1.ConditionFalse,
+			Reason:  "PartialSyncFailure",
+			Message: connector.Status.Message,
+		})
+	} else {
+		connector.Status.Phase = "Connected"
+		connector.Status.Message = ""
+		setCondition(&connector.Status.Conditions, metav1.Condition{
+			Type:    "Ready",
+			Status:  metav1.ConditionTrue,
+			Reason:  "SyncSucceeded",
+			Message: fmt.Sprintf("synced %d models, %d versions", len(models), versionCount),
+		})
+	}
 	if err := r.Status().Update(ctx, &connector); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -272,7 +316,7 @@ func (r *ModelRegistryConnectorReconciler) resolveToken(ctx context.Context, con
 		return "", nil
 	}
 	var secret corev1.Secret
-	if err := r.Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: connector.Namespace}, &secret); err != nil {
+	if err := r.secrets().Get(ctx, client.ObjectKey{Name: ref.Name, Namespace: connector.Namespace}, &secret); err != nil {
 		return "", fmt.Errorf("read auth secret %s: %w", ref.Name, err)
 	}
 	key := ref.Key
@@ -287,6 +331,7 @@ func (r *ModelRegistryConnectorReconciler) resolveToken(ctx context.Context, con
 }
 
 func (r *ModelRegistryConnectorReconciler) degrade(ctx context.Context, connector *securityv1alpha1.ModelRegistryConnector, reason, message string, interval time.Duration) (ctrl.Result, error) {
+	metrics.SourceSyncFailures.WithLabelValues("model-registry", reason).Inc()
 	connector.Status.Phase = "Degraded"
 	connector.Status.Message = message
 	setCondition(&connector.Status.Conditions, metav1.Condition{

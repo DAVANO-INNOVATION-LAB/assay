@@ -1,0 +1,18 @@
+# Both replicas serve the admission webhook. Without a budget, a node drain
+# can evict both at once, and because the webhook's failurePolicy is Ignore,
+# the result is not an outage anyone notices — it is a window where every model
+# deployment is admitted unchecked.
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: assay-controller-manager
+  namespace: assay-system
+  labels:
+    app.kubernetes.io/name: assay-model-scanner
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: assay-model-scanner
+      app.kubernetes.io/component: controller
