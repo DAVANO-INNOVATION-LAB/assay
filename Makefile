@@ -10,6 +10,10 @@ SCANNER_TAG ?= 0.1.0
 LOCALBIN ?= $(shell pwd)/bin
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 
+# Stamped into the standalone CLI. Override on release: make cli VERSION=v0.2.0
+VERSION ?= dev
+CLI_LDFLAGS ?= -X main.version=$(VERSION)
+
 .PHONY: all
 all: build
 
@@ -44,9 +48,28 @@ cover: test ## Show per-package coverage.
 ##@ Build
 
 .PHONY: build
-build: fmt vet ## Build both binaries.
+build: fmt vet ## Build all binaries.
 	go build -o bin/assay-manager ./cmd/manager
 	go build -o bin/assay-runner ./cmd/runner
+	go build -ldflags "$(CLI_LDFLAGS)" -o bin/assay ./cmd/assay
+
+.PHONY: cli
+cli: ## Build the standalone inspector CLI (make cli VERSION=v0.2.0).
+	go build -ldflags "$(CLI_LDFLAGS)" -o bin/assay ./cmd/assay
+
+# GOOS/GOARCH pairs shipped as release binaries.
+CLI_PLATFORMS ?= darwin/amd64 darwin/arm64 linux/amd64 linux/arm64
+
+.PHONY: cli-release
+cli-release: ## Cross-compile the CLI for every release platform into dist/.
+	@mkdir -p dist
+	@for platform in $(CLI_PLATFORMS); do \
+		os=$${platform%/*}; arch=$${platform#*/}; \
+		out=dist/assay-$(VERSION)-$$os-$$arch; \
+		echo "building $$out"; \
+		GOOS=$$os GOARCH=$$arch CGO_ENABLED=0 \
+			go build -ldflags "$(CLI_LDFLAGS)" -o $$out ./cmd/assay || exit 1; \
+	done
 
 .PHONY: docker-build
 docker-build: ## Build the operator image.

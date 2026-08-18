@@ -143,6 +143,50 @@ raw `.bin` tensor dump contains every pickle opcode byte by coincidence;
 `internal/inspector/falsepositive_test.go` pins the inert cases that must stay
 silent, because a scanner that cries wolf gets switched off.
 
+## Standalone CLI
+
+The inspector and the policy engine both run without a cluster, so the same
+analysis ships as a single static binary. This is the fastest way to try Assay
+and the natural fit for a CI gate or a pre-commit hook.
+
+```
+make cli                       # builds bin/assay
+bin/assay inspect ./model      # scan a file or directory
+bin/assay inspect --json ./m   # machine-readable report for CI
+```
+
+The verdict comes from the same `internal/policy` engine the operator runs
+with its default policy, so a local `Quarantined` is a cluster `Quarantined`.
+Exit codes are made for gating:
+
+| Code | Verdict | Meaning |
+|---|---|---|
+| 0 | Approved | no policy violations |
+| 2 | ReviewRequired | non-critical violations |
+| 3 | Quarantined | a critical finding — the artifact executes code on load |
+| 1 | — | the scan itself failed (bad path, I/O error) |
+
+A finding never exits 1: a completed scan reports its verdict through the
+verdict codes, so a CI step can branch on "clean vs. blocked vs. broken".
+
+```
+$ assay inspect ./sketchy-model
+assay v0.2.0 — ./sketchy-model
+scanned 1 file(s), formats: [pickle]
+
+  [Critical] ASSAY-PICKLE-001  Pickle imports a dangerous callable
+             at weights.pkl
+             pickle stream references posix.system, which executes on load
+
+findings: 1 critical, 0 high, 0 medium, 0 low
+policy violation: blockUnsafeModel: 1 critical model-inspection finding(s): the artifact executes code on load
+
+verdict: Quarantined (risk score 60/100)
+```
+
+Release binaries for macOS and Linux (amd64/arm64) come from `make cli-release
+VERSION=vX.Y.Z`, which writes them to `dist/`.
+
 ## Security model of a scan
 
 Scan pods handle bytes from an untrusted source, so the Job is split into
