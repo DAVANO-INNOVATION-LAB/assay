@@ -163,14 +163,37 @@ jobs:
       - name: Kustomize base and overlays build
         run: make kustomize-build
 
-      # Rendering is not enough: these catch schema errors the templates can
-      # produce but a plain YAML parse cannot see.
-      - name: Manifests are valid Kubernetes objects
+      # Rendering only proves the templates produce YAML. This checks the YAML
+      # is actually valid against the Kubernetes schemas — a misspelled field
+      # or a string where an int belongs renders fine and fails on apply.
+      #
+      # kubeconform rather than `kubectl apply --dry-run=client`: kubectl
+      # downloads the OpenAPI schema from a live cluster, which a runner has
+      # no access to, so it fails on connection refused rather than on
+      # anything about the manifests.
+      - name: Install kubeconform
+        run: go install github.com/yannh/kubeconform/cmd/kubeconform@v0.6.7
+
+      - name: Manifests validate against the Kubernetes schemas
         run: |
+          # ServiceMonitor/PrometheusRule/Certificate are CRDs from operators
+          # that may not be installed; their absence is not an error here.
+          validate() {
+            kubeconform -strict -summary -ignore-missing-schemas \
+              -kubernetes-version 1.29.0 -
+          }
+          echo "== helm: openshift cert mode"
+          helm template assay deploy/helm/assay --namespace assay-system | validate
+          echo "== helm: cert-manager, monitoring, extra scan namespaces"
           helm template assay deploy/helm/assay --namespace assay-system \
-            | kubectl apply --dry-run=client -f - > /dev/null
-          kubectl kustomize config/default \
-            | kubectl apply --dry-run=client -f - > /dev/null
+            --set webhook.certMode=cert-manager \
+            --set metrics.serviceMonitor.enabled=true \
+            --set metrics.prometheusRule.enabled=true \
+            --set scanner.additionalNamespaces='{team-a}' | validate
+          for o in config/default config/overlays/dev config/overlays/enforcing; do
+            echo "== kustomize: $o"
+            kubectl kustomize "$o" | validate
+          done
 
   image:
     name: Container image builds
