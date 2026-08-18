@@ -48,6 +48,8 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Component | Package | State |
 |---|---|---|
 | Model Registry client | `internal/registry` | Working: list, paginate, patch properties |
+| Model sources | `internal/modelsource` | `Source` interface (List/Resolve/WriteBack); OpenShift registry + MLflow, MLflow live-tested |
+| Standalone CLI | `cmd/assay` | Working: `assay inspect`, CI exit codes, JSON output |
 | Artifact resolvers | `internal/resolver` | HTTP run end-to-end; OCI/S3/ODF/ModelCar compile but **untested against real storage**; PVC not yet mounted by the Job builder |
 | Scan orchestrator | `internal/controller` | Working: one Job per scanner |
 | Model inspector | `internal/inspector` | Working: pickle, archive, format analysis |
@@ -187,6 +189,39 @@ verdict: Quarantined (risk score 60/100)
 Release binaries for macOS and Linux (amd64/arm64) come from `make cli-release
 VERSION=vX.Y.Z`, which writes them to `dist/`.
 
+## Model sources
+
+A *source* is a system that declares model versions and can carry a verdict —
+distinct from a storage *resolver*, which only knows where the bytes live. The
+`internal/modelsource` package is one interface over both:
+
+```go
+type Source interface {
+    Name() string
+    List(ctx) ([]Version, error)                       // discover versions
+    Resolve(ctx, Version, destDir) (*Artifact, error)  // stage the bytes
+    WriteBack(ctx, Version, Verdict) error              // record the verdict
+}
+```
+
+Registry scanning and MLflow scanning become the same pipeline with a
+different source — one spine, many triggers. Two sources implement it today:
+
+- **OpenShift AI Model Registry** (`model-registry`) — the platform Assay was
+  built around; write-back lands as namespaced custom properties.
+- **MLflow** (`mlflow`) — lists every registered model version, stages
+  artifacts through the tracking server's artifact proxy (or defers `s3://`
+  and `oci://` sources to the storage resolvers), and writes the verdict back
+  as `assay.verdict` / `assay.risk_score` tags visible in the MLflow UI.
+
+The MLflow path is exercised end to end against a real tracking server in
+Docker — register a malicious pickle, scan it, assert Quarantined and the
+verdict tag written back:
+
+```bash
+make test-mlflow
+```
+
 ## Security model of a scan
 
 Scan pods handle bytes from an untrusted source, so the Job is split into
@@ -309,8 +344,9 @@ a running cluster, and both should be tightened once coverage is complete:
 make test
 ```
 
-Requires Go 1.24+. `make manifests` regenerates CRDs and RBAC from the
+Requires Go 1.25+. `make manifests` regenerates CRDs and RBAC from the
 kubebuilder markers; `make generate` regenerates DeepCopy methods.
+`make test-mlflow` runs the live MLflow integration test (needs Docker).
 
 ## Roadmap
 
@@ -328,5 +364,7 @@ promotion workflows, OpenShift console plugin.
 > concrete and verifiable. Anything model-*behaviour* is out of scope by
 > design, not on a roadmap.
 
-**Phase 3** — multi-cluster federation, Hugging Face / MLflow / Kubeflow
-connectors, continuous compliance and runtime monitoring.
+**Phase 3** — multi-cluster federation, Hugging Face / Kubeflow connectors,
+continuous compliance and runtime monitoring. MLflow support has landed early
+via the `modelsource.Source` interface (see **Model sources**); the next
+source to wire into the in-cluster controller is the natural follow-on.
