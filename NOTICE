@@ -1,0 +1,12 @@
+Assay
+Copyright 2026 Davano Innovation Lab
+
+This product includes software developed at Davano Innovation Lab.
+
+Assay invokes third-party scanners as separate container images built under
+scanners/. Those images carry their own licences, including copyleft ones
+(ClamAV is GPL-2.0, TruffleHog is AGPL-3.0). They are executed as separate
+processes over a documented two-argument contract and no part of their source
+is linked into Assay, so their terms apply to those images rather than to this
+work. Source for the unmodified upstream tools is available from their
+respective projects.

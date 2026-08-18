@@ -75,7 +75,7 @@ cluster at all:
 
 ```bash
 docker run --rm --network none -v "$PWD/model:/m:ro" \
-  --entrypoint /assay ghcr.io/davano-innovation-lab/assay/assay-operator:latest inspect /m
+  --entrypoint /assay docker.io/davanolab/assay-operator:latest inspect /m
 ```
 
 ## Scanner images

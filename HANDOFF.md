@@ -120,7 +120,7 @@ always-empty field), stuck scans requeued forever, reports had no ownerRefs.
 ```
 kind create cluster --name assay-demo        # if gone
 make install                                  # CRDs under security.davano.io
-# load images into kind: quay.io/davano/assay-operator:0.1.0 + scanner-*:0.1.0
+# load images into kind: docker.io/davanolab/assay-operator:0.1.0 + scanner-*:0.1.0
 make -C scanners ...                          # or docker tag + kind load
 # run operator (out-of-cluster is fine): go run ./cmd/manager --enable-webhook=false ...
 # UI: kubectl proxy --port=8903 --www=./ui --www-prefix=/ui/
