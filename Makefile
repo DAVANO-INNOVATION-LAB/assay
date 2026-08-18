@@ -10,7 +10,11 @@ SCANNER_TAG ?= 0.1.0
 LOCALBIN ?= $(shell pwd)/bin
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
-# Keep in step with the version pinned in .github/workflows/ci.yml.
+# The single pin for both local and CI use: CI runs `make lint`, so there is no
+# second version to drift. Installed with `go install`, which builds it against
+# the local toolchain — golangci-lint errors out when the Go version it was
+# built with is older than the one go.mod targets, which is what a prebuilt
+# binary from the marketplace action would hit.
 GOLANGCI_LINT_VERSION ?= v1.62.2
 
 # Stamped into the standalone CLI. Override on release: make cli VERSION=v0.2.0
