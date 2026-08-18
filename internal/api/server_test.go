@@ -265,15 +265,15 @@ func TestSecurityHeadersArePresent(t *testing.T) {
 }
 
 func TestSessionsExpire(t *testing.T) {
-	codec, err := newSessionCodec([]byte(strings.Repeat("k", 32)), -time.Hour)
+	// A non-positive TTL is floored to a sane default by newSessionCodec, so
+	// expiry is exercised by signing an already-past payload directly.
+	codec, err := newSessionCodec([]byte(strings.Repeat("k", 32)), time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	// TTL of -1h means it is already expired when issued.
-	if err := codec.issue(rec, httptest.NewRequest(http.MethodGet, "/", nil), "u", nil); err != nil {
-		t.Fatal(err)
-	}
+	expired, _ := json.Marshal(session{Username: "u", Expires: time.Now().Add(-time.Hour).Unix()})
+	http.SetCookie(rec, &http.Cookie{Name: sessionCookie, Value: codec.sign(expired)})
 	var value string
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == sessionCookie {
