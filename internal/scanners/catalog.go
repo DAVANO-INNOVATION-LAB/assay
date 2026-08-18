@@ -35,7 +35,7 @@ const (
 // clusters mirror these and point the operator at the mirror with
 // --scanner-registry, so image references are never hardcoded to a host the
 // cluster cannot reach.
-const DefaultRegistry = "quay.io/davano"
+const DefaultRegistry = "docker.io/davanolab"
 
 // ImageTag pins the scanner image version. A security scanner must be
 // reproducible: :latest would silently change what a recorded verdict means.

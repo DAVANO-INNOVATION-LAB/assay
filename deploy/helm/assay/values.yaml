@@ -1,7 +1,7 @@
 # Default values for Assay.
 
 image:
-  repository: quay.io/davano/assay-operator
+  repository: docker.io/davanolab/assay-operator
   tag: ""          # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
   pullSecrets: []
@@ -58,7 +58,7 @@ operator:
   # Registry holding the scanner images. Point at a mirror for a disconnected
   # cluster; the scanner images carry their own databases, so scans need no
   # egress.
-  scannerRegistry: quay.io/davano
+  scannerRegistry: docker.io/davanolab
 
   # Fail a scan that has not reached a verdict in this long. Without it, a scan
   # whose report never lands retries forever.

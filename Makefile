@@ -1,11 +1,13 @@
-IMG ?= quay.io/davano/assay-operator:0.1.0
+REGISTRY ?= docker.io/davanolab
+IMG ?= $(REGISTRY)/assay-operator:$(IMAGE_TAG)
+IMAGE_TAG ?= 0.1.0
 NAMESPACE ?= assay-system
 CONTROLLER_TOOLS_VERSION ?= v0.17.2
 
 # Must match scanners.DefaultRegistry and scanners.ImageTag in
 # internal/scanners/catalog.go.
-SCANNER_REGISTRY ?= quay.io/davano
-SCANNER_TAG ?= 0.1.0
+SCANNER_REGISTRY ?= $(REGISTRY)
+SCANNER_TAG ?= $(IMAGE_TAG)
 
 LOCALBIN ?= $(shell pwd)/bin
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen

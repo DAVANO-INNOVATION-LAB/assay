@@ -4,7 +4,7 @@
 # artifact directory and the output file as its two positional arguments.
 # internal/scanners/catalog_test.go enforces that the operator agrees.
 
-REGISTRY ?= quay.io/davano
+REGISTRY ?= docker.io/davanolab
 # Must match scanners.ImageTag in internal/scanners/catalog.go.
 TAG ?= 0.1.0
 PLATFORM ?= linux/amd64

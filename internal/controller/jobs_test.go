@@ -25,7 +25,7 @@ func testScan() *securityv1alpha1.ArtifactScan {
 
 func testJobConfig() JobConfig {
 	return JobConfig{
-		OperatorImage:   "quay.io/davano/assay-operator:0.1.0",
+		OperatorImage:   "docker.io/davanolab/assay-operator:0.1.0",
 		ScannerRegistry: "registry.internal/assay",
 		ServiceAccount:  "assay-scanner",
 		WorkspaceSize:   resource.MustParse("50Gi"),
