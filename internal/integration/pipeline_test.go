@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
-	"github.com/JUMP1ST/assay/internal/inspector"
-	"github.com/JUMP1ST/assay/internal/policy"
-	"github.com/JUMP1ST/assay/internal/results"
-	"github.com/JUMP1ST/assay/internal/scanners"
+	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/inspector"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/policy"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/results"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/scanners"
 )
 
 // runInspectorStage mirrors what the scan Job does: the inspector writes a

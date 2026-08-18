@@ -16,9 +16,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
-	"github.com/JUMP1ST/assay/internal/policy"
-	"github.com/JUMP1ST/assay/internal/scanners"
+	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/policy"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/scanners"
 )
 
 // ArtifactScanReconciler drives one ArtifactScan through fetch, scan, and

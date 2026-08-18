@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
 )
 
 // Property keys Assay writes back into the Model Registry. They are namespaced
