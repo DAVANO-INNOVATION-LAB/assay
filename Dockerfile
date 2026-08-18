@@ -29,6 +29,14 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 FROM registry.access.redhat.com/ubi9/ubi-micro:latest
 
 WORKDIR /
+
+# The CA bundle. ubi-micro ships no trust store at all, so without this every
+# HTTPS call the operator makes fails with "certificate signed by unknown
+# authority" — the Model Registry, Hugging Face, S3, all of it. It is copied
+# from the builder rather than installed, because ubi-micro has no package
+# manager to install it with.
+COPY --from=builder /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /etc/ssl/certs/ca-certificates.crt
+
 COPY --from=builder /workspace/assay-manager /assay-manager
 COPY --from=builder /workspace/assay-runner /assay-runner
 COPY --from=builder /workspace/assay /assay
