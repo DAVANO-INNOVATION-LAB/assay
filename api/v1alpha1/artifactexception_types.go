@@ -14,10 +14,32 @@ type ArtifactExceptionSpec struct {
 	FindingIDs []string `json:"findingIDs,omitempty"`
 	// Rules lists waived policy rule names (e.g. maxCriticalCVEs, requireSBOM).
 	// +optional
-	Rules  []string `json:"rules,omitempty"`
-	Reason string   `json:"reason"`
+	Rules []string `json:"rules,omitempty"`
+	// Reason is why the risk was accepted. Required: an unexplained waiver is
+	// indistinguishable from a mistake when someone reads it a year later.
+	Reason string `json:"reason"`
+
+	// ScannedDigest binds the acceptance to the exact bytes that were
+	// reviewed. Without it an approval of "fraud-detector v3" silently carries
+	// over to whatever is published at that name next, which is the same
+	// replay the admission gate refuses elsewhere.
+	// +optional
+	ScannedDigest string `json:"scannedDigest,omitempty"`
+
+	// ApprovedBy is set by the admission webhook from the authenticated
+	// identity of whoever created this object. Anything submitted here is
+	// overwritten: a name a user can type is a claim, not a signature.
 	// +optional
 	ApprovedBy string `json:"approvedBy,omitempty"`
+	// ApprovedByGroups records the approver's groups at the time of signing,
+	// so "who was allowed to approve this" is answerable after the fact even
+	// if their membership later changes.
+	// +optional
+	ApprovedByGroups []string `json:"approvedByGroups,omitempty"`
+	// ApprovedAt is stamped by the webhook. Server time, not client time, so
+	// an acceptance cannot be backdated.
+	// +optional
+	ApprovedAt *metav1.Time `json:"approvedAt,omitempty"`
 	// ExpiresAt after which the exception no longer applies.
 	// +optional
 	ExpiresAt *metav1.Time `json:"expiresAt,omitempty"`

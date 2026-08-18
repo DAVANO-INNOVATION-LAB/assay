@@ -54,8 +54,26 @@ spec:
             description: ArtifactExceptionSpec waives specific policy failures for
               a model version.
             properties:
-              approvedBy:
+              approvedAt:
+                description: |-
+                  ApprovedAt is stamped by the webhook. Server time, not client time, so
+                  an acceptance cannot be backdated.
+                format: date-time
                 type: string
+              approvedBy:
+                description: |-
+                  ApprovedBy is set by the admission webhook from the authenticated
+                  identity of whoever created this object. Anything submitted here is
+                  overwritten: a name a user can type is a claim, not a signature.
+                type: string
+              approvedByGroups:
+                description: |-
+                  ApprovedByGroups records the approver's groups at the time of signing,
+                  so "who was allowed to approve this" is answerable after the fact even
+                  if their membership later changes.
+                items:
+                  type: string
+                type: array
               expiresAt:
                 description: ExpiresAt after which the exception no longer applies.
                 format: date-time
@@ -72,6 +90,9 @@ spec:
               modelVersion:
                 type: string
               reason:
+                description: |-
+                  Reason is why the risk was accepted. Required: an unexplained waiver is
+                  indistinguishable from a mistake when someone reads it a year later.
                 type: string
               rules:
                 description: Rules lists waived policy rule names (e.g. maxCriticalCVEs,
@@ -79,6 +100,13 @@ spec:
                 items:
                   type: string
                 type: array
+              scannedDigest:
+                description: |-
+                  ScannedDigest binds the acceptance to the exact bytes that were
+                  reviewed. Without it an approval of "fraud-detector v3" silently carries
+                  over to whatever is published at that name next, which is the same
+                  replay the admission gate refuses elsewhere.
+                type: string
             required:
             - modelName
             - modelVersion

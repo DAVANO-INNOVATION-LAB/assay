@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.32
 	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.22.37
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.106.2
+	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/prometheus/client_golang v1.19.1
 	k8s.io/api v0.32.3
 	k8s.io/apimachinery v0.32.3
@@ -35,7 +36,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
-	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
