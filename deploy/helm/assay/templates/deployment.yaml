@@ -1,0 +1,156 @@
+{{- include "assay.validateCertMode" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "assay.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "assay.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+spec:
+  replicas: {{ .Values.replicaCount }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Both replicas serve the webhook, so one must stay up throughout a
+      # rollout: with failurePolicy Ignore, a gap in endpoints is a gap in
+      # enforcement rather than a visible outage.
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "assay.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "assay.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}{{- toYaml . | nindent 8 }}{{- end }}
+      annotations:
+        # Roll the pods when the webhook wiring changes.
+        checksum/webhook-config: {{ print .Values.webhook.certMode .Values.webhook.certSecretName | sha256sum }}
+        {{- with .Values.podAnnotations }}{{- toYaml . | nindent 8 }}{{- end }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          # Two replicas on one node is one drain away from no gate at all.
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "assay.selectorLabels" . | nindent 20 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: manager
+          image: {{ include "assay.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            {{- if .Values.operator.leaderElect }}
+            - --leader-elect
+            {{- end }}
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address={{ if .Values.metrics.enabled }}:{{ .Values.metrics.port }}{{ else }}0{{ end }}
+            - --enable-webhook={{ .Values.webhook.enabled }}
+            - --scan-service-account={{ .Values.scanner.serviceAccountName }}
+            - --scanner-registry={{ .Values.operator.scannerRegistry }}
+            - --require-report={{ .Values.operator.requireReport }}
+            - --scan-deadline-minutes={{ .Values.operator.scanDeadlineMinutes }}
+            - --job-ttl-seconds={{ .Values.operator.jobTTLSeconds }}
+            - --workspace-size={{ .Values.operator.workspaceSize }}
+            - --zap-log-level={{ .Values.operator.logLevel }}
+            {{- with .Values.operator.defaultPolicy }}
+            - --default-policy={{ . }}
+            {{- end }}
+            {{- with .Values.operator.pullSecret }}
+            - --pull-secret={{ . }}
+            {{- end }}
+            {{- with .Values.operator.storageSecret }}
+            - --storage-secret={{ . }}
+            {{- end }}
+          env:
+            # Scan Jobs run this same image for their fetch and publish steps,
+            # so the manager must know its own reference.
+            - name: ASSAY_OPERATOR_IMAGE
+              value: {{ include "assay.image" . }}
+            # The gate searches the workload's namespace and then this one.
+            # Without it, reports written here are invisible to the gate and
+            # every workload is admitted as unscanned.
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          ports:
+            {{- if .Values.webhook.enabled }}
+            - name: webhook
+              containerPort: 9443
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+              protocol: TCP
+            {{- end }}
+          # Cache sync on a large cluster can outlast the liveness probe's
+          # patience; the startup probe gives it room without slowing restart
+          # detection once running.
+          startupProbe:
+            httpGet: {path: /healthz, port: 8081}
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /healthz, port: 8081}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          # /readyz reports the webhook's TLS listener, so the pod joins the
+          # Service only once it can actually answer an AdmissionReview.
+          readinessProbe:
+            httpGet: {path: /readyz, port: 8081}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          {{- if .Values.webhook.enabled }}
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+          {{- end }}
+          lifecycle:
+            preStop:
+              # Endpoint removal is asynchronous with SIGTERM; without a short
+              # drain, AdmissionReviews in flight hit a closing listener.
+              exec:
+                command: ["sleep", "5"]
+      {{- if .Values.webhook.enabled }}
+      volumes:
+        - name: webhook-certs
+          secret:
+            secretName: {{ .Values.webhook.certSecretName }}
+      {{- end }}

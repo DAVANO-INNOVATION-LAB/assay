@@ -137,6 +137,41 @@ jobs:
           print('verdict', r['verdict'], 'risk', r['riskScore'])
           "
 
+  packaging:
+    name: Helm and Kustomize
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: azure/setup-helm@v4
+
+      # The chart's CRDs and ClusterRole rules are copied from config/ by
+      # `make helm-sync`. If someone edits a kubebuilder marker and forgets to
+      # re-sync, the chart ships stale RBAC — which fails at runtime as a
+      # permission error rather than at build time.
+      - name: Chart is in sync with generated manifests
+        run: |
+          make helm-sync
+          git diff --exit-code deploy/helm/assay/crds deploy/helm/assay/rbac-rules.yaml
+
+      - name: Lint and render the chart in every cert mode
+        run: make helm-lint
+
+      - name: Kustomize base and overlays build
+        run: make kustomize-build
+
+      # Rendering is not enough: these catch schema errors the templates can
+      # produce but a plain YAML parse cannot see.
+      - name: Manifests are valid Kubernetes objects
+        run: |
+          helm template assay deploy/helm/assay --namespace assay-system \
+            | kubectl apply --dry-run=client -f - > /dev/null
+          kubectl kustomize config/default \
+            | kubectl apply --dry-run=client -f - > /dev/null
+
   image:
     name: Container image builds
     runs-on: ubuntu-latest

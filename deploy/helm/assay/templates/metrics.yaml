@@ -1,0 +1,101 @@
+{{- if and .Values.metrics.enabled .Values.metrics.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "assay.fullname" . }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "assay.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+spec:
+  selector:
+    {{- include "assay.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}
+
+{{- if .Values.metrics.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "assay.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "assay.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}{{- toYaml . | nindent 4 }}{{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: assay-model-scanner
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: metrics
+  endpoints:
+    - port: metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      path: /metrics
+{{- end }}
+
+{{- if .Values.metrics.prometheusRule.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "assay.fullname" . }}-gate-health
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "assay.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}{{- toYaml . | nindent 4 }}{{- end }}
+spec:
+  groups:
+    - name: assay.gate
+      rules:
+        # Each of these is a way for the gate to be doing nothing while looking
+        # entirely healthy, which is why they are alerts and not dashboards.
+        - alert: AssayAdmittingUnscannedModels
+          expr: sum(rate(assay_admission_decisions_total{outcome="allowed_unscanned"}[15m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Assay is admitting models it has never scanned
+            description: >-
+              Workloads are being admitted because no ModelSecurityReport exists
+              for them. Assay is not gating these deployments.
+
+        - alert: AssayGateBypassedByAnnotation
+          expr: sum(rate(assay_admission_decisions_total{outcome="allowed_skip_annotation"}[1h])) > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: Workloads are skipping Assay validation by annotation
+            description: >-
+              security.davano.io/skip-validation is in use. Anyone who can set it
+              on their own workload bypasses the gate.
+
+        - alert: AssayScannerErroring
+          expr: sum by (scanner) (rate(assay_scanner_results_total{status="Error"}[30m])) > 0
+          for: 30m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Scanner {{ `{{ $labels.scanner }}` }} is failing"
+            description: >-
+              A failing scanner produces no findings, which is scored the same as
+              a clean result for that dimension.
+
+        - alert: AssaySourceSyncFailing
+          expr: sum by (source) (rate(assay_source_sync_failures_total[15m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Assay cannot sync model source {{ `{{ $labels.source }}` }}"
+            description: >-
+              New model versions are not being discovered, so they will deploy as
+              unscanned.
+{{- end }}

@@ -1,0 +1,56 @@
+# Development / kind: one replica, no webhook, permissive.
+#
+# The webhook is off because kind has no service CA operator, so the serving
+# cert Secret is never created and the pod would sit in ContainerCreating
+# forever. Turning it off is honest; leaving it on with no cert would look like
+# a gate while enforcing nothing.
+#
+#   kubectl apply -k config/overlays/dev
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../default
+
+patches:
+  - target:
+      kind: Deployment
+      name: assay-controller-manager
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      # No second replica to keep available.
+      - op: remove
+        path: /spec/strategy
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --enable-webhook=false
+      # Leader election on a single replica just adds startup latency.
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --leader-elect=false
+      # The cert volume has no Secret behind it without the webhook.
+      - op: remove
+        path: /spec/template/spec/volumes
+      - op: remove
+        path: /spec/template/spec/containers/0/volumeMounts
+
+  # A single replica cannot satisfy minAvailable: 1 during a drain.
+  - target:
+      kind: PodDisruptionBudget
+    patch: |
+      $patch: delete
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: assay-controller-manager
+
+  - target:
+      kind: ValidatingWebhookConfiguration
+    patch: |
+      $patch: delete
+      apiVersion: admissionregistration.k8s.io/v1
+      kind: ValidatingWebhookConfiguration
+      metadata:
+        name: assay-model-deployment-gate

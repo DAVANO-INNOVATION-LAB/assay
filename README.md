@@ -51,6 +51,7 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Model sources | `internal/modelsource` | `Source` interface (List/Resolve/WriteBack); OpenShift registry + MLflow, MLflow live-tested |
 | Standalone CLI | `cmd/assay` | Working: `assay inspect`, CI exit codes, JSON output |
 | Metrics | `internal/metrics` | Admission decisions, scan verdicts and durations, scanner and sync failures |
+| Packaging | `deploy/helm`, `config/` | Helm chart (3 webhook cert modes), Kustomize base + dev/enforcing overlays |
 | Artifact resolvers | `internal/resolver` | HTTP and S3/ODF run end-to-end (S3 live-tested against MinIO); PVC mounted and covered; OCI/ModelCar compile but **untested against a real registry** |
 | Scan orchestrator | `internal/controller` | Working: one Job per scanner |
 | Model inspector | `internal/inspector` | Working: pickle, archive, format analysis |
@@ -306,13 +307,54 @@ kubectl get compliancereports -n assay-system
 Detailed findings stay in the cluster; only a summary is written back to the
 registry.
 
-## Quick start
+## Installing
 
-Build and publish the operator and scanner images, then deploy:
+Build and publish the operator and scanner images first:
 
 ```bash
 make docker-build docker-push scanners scanners-push
 ```
+
+Then pick an install path. All three deploy the same thing.
+
+**Helm** — the packaged path, and the only one that can issue webhook
+certificates on a cluster without OpenShift's service CA operator:
+
+```bash
+helm install assay deploy/helm/assay --namespace assay-system --create-namespace
+```
+
+The one setting to get right is `webhook.certMode`. It defaults to `openshift`,
+which relies on the service CA operator to issue and rotate the serving cert.
+On any other cluster that Secret is never created and the pod sits in
+`ContainerCreating`, so use cert-manager there:
+
+```bash
+helm install assay deploy/helm/assay --namespace assay-system --create-namespace \
+  --set webhook.certMode=cert-manager
+```
+
+There is deliberately no self-signed fallback: a webhook whose certificate the
+API server cannot verify is skipped silently under `failurePolicy: Ignore`,
+which is indistinguishable from a gate that is working.
+
+Scans run in the namespace of the `ArtifactScan`, and the scan ServiceAccount
+must exist there or the pod is never admitted and the scan hangs in `Pending`:
+
+```bash
+helm install assay deploy/helm/assay --namespace assay-system --create-namespace \
+  --set scanner.additionalNamespaces='{team-a,team-b}'
+```
+
+**Kustomize** — the kubebuilder-native path:
+
+```bash
+kubectl apply -k config/default          # OpenShift; webhook on
+kubectl apply -k config/overlays/dev     # kind/dev; single replica, webhook off
+kubectl apply -k config/overlays/enforcing  # --require-report=true + failurePolicy: Fail
+```
+
+**Make** — plain YAML, no tooling:
 
 ```bash
 make install deploy

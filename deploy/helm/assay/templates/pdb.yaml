@@ -1,0 +1,17 @@
+{{- if and .Values.podDisruptionBudget.enabled (gt (int .Values.replicaCount) 1) }}
+# Without a budget a node drain can evict both replicas at once. Because the
+# webhook's failurePolicy is Ignore, that is not an outage anyone notices — it
+# is a window in which every model deployment is admitted unchecked.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "assay.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "assay.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "assay.selectorLabels" . | nindent 6 }}
+{{- end }}

@@ -1,0 +1,194 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.2
+  name: modelregistryconnectors.security.davano.io
+spec:
+  group: security.davano.io
+  names:
+    kind: ModelRegistryConnector
+    listKind: ModelRegistryConnectorList
+    plural: modelregistryconnectors
+    shortNames:
+    - mrc
+    singular: modelregistryconnector
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.registryURL
+      name: Registry
+      type: string
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.registeredModels
+      name: Models
+      type: integer
+    - jsonPath: .status.scansCreated
+      name: Scans
+      type: integer
+    - jsonPath: .status.lastSyncTime
+      name: Last Sync
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ModelRegistryConnector connects Assay to an OpenShift AI Model
+          Registry.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              ModelRegistryConnectorSpec defines a connection to an OpenShift AI
+              (Kubeflow) Model Registry instance to watch for models to scan.
+            properties:
+              authSecretRef:
+                description: |-
+                  AuthSecretRef references a Secret containing a bearer token used to
+                  authenticate against the registry.
+                properties:
+                  key:
+                    default: token
+                    type: string
+                  name:
+                    type: string
+                required:
+                - name
+                type: object
+              includeModels:
+                description: |-
+                  IncludeModels restricts scanning to registered models whose name
+                  matches one of these globs. Empty means all models.
+                items:
+                  type: string
+                type: array
+              insecureSkipTLSVerify:
+                description: InsecureSkipTLSVerify disables TLS certificate verification.
+                type: boolean
+              policyRef:
+                description: |-
+                  PolicyRef names the ArtifactScanPolicy applied to scans created by
+                  this connector. Empty selects the built-in default scanner set.
+                type: string
+              pollInterval:
+                description: |-
+                  PollInterval controls how often the registry is polled for new
+                  models and versions. Defaults to 1m.
+                type: string
+              registryURL:
+                description: |-
+                  RegistryURL is the base URL of the Model Registry REST API,
+                  e.g. https://model-registry.rhoai-model-registries.svc:8080
+                type: string
+              writeBack:
+                description: |-
+                  WriteBack controls whether scan summaries are written back into the
+                  Model Registry as custom properties. Defaults to true.
+                type: boolean
+            required:
+            - registryURL
+            type: object
+          status:
+            description: ModelRegistryConnectorStatus reports sync progress.
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              lastSyncTime:
+                format: date-time
+                type: string
+              message:
+                type: string
+              modelVersions:
+                format: int32
+                type: integer
+              phase:
+                enum:
+                - Pending
+                - Connected
+                - Degraded
+                - Error
+                type: string
+              registeredModels:
+                format: int32
+                type: integer
+              scansCreated:
+                format: int32
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

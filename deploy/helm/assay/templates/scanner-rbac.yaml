@@ -1,0 +1,51 @@
+{{/*
+Scan Jobs are created in the namespace of the ArtifactScan, not the operator's
+namespace, and they run as scanner.serviceAccountName. If that account does not
+exist in the scan's namespace, the pod is never admitted and the scan hangs in
+Pending with no obvious cause — so the identity is created in the release
+namespace and in every namespace listed in scanner.additionalNamespaces.
+
+The Role is deliberately tiny. These pods process untrusted model bytes; all
+they may do is write the report for their own scan.
+*/}}
+{{- $namespaces := prepend .Values.scanner.additionalNamespaces .Release.Namespace | uniq -}}
+{{- range $ns := $namespaces }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $.Values.scanner.serviceAccountName }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "assay.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: scanner
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $.Values.scanner.serviceAccountName }}-role
+  namespace: {{ $ns }}
+  labels:
+    {{- include "assay.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: ["security.davano.io"]
+    resources: ["artifactscanreports"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $.Values.scanner.serviceAccountName }}-rolebinding
+  namespace: {{ $ns }}
+  labels:
+    {{- include "assay.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $.Values.scanner.serviceAccountName }}-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ $.Values.scanner.serviceAccountName }}
+    namespace: {{ $ns }}
+{{- end }}
