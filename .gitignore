@@ -1,6 +1,13 @@
 # Build output
 bin/
 dist/
+# Root-level binaries from an ad-hoc `go build -o <name> ./cmd/...`. Two of
+# these were committed once at 78MB; the Makefile targets all write to bin/.
+/assay
+/assay-manager
+/assay-runner
+/runner
+/manager
 
 # Test and coverage artifacts
 cover.out

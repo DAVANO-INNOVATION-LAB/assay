@@ -1,14 +1,18 @@
 # Assay — session handoff
 
-Renamed from **Zeus** on 2026-08-11 (Zeus = banking-trojan family). Directory is
-still `~/m-dev/zeus`; module is `github.com/DAVANO-INNOVATION-LAB/assay`; API group is
+Named **Assay** on 2026-08-11. The previous working name was dropped because it
+collided with a well-known malware family — check any candidate name against
+malware families and existing security products before committing to it.
+
+Module is `github.com/DAVANO-INNOVATION-LAB/assay`; API group is
 `security.davano.io` (org-tied on purpose, so a product rename never breaks CRs).
-Org is **Davano**.
+Org is **Davano**. The working directory still carries the old name — the last
+on-disk trace, left alone because the live demo below runs out of it.
 
 ## State (updated 2026-08-18)
-- **GitHub repo moved** JUMP1ST/zeus-model-scanner → **DAVANO-INNOVATION-LAB/assay**
-  (transfer, history + redirects preserved). Module path rewritten repo-wide;
-  full suite green under it; local `origin` already points at the new URL.
+- **GitHub repo moved** to **DAVANO-INNOVATION-LAB/assay** (transfer, so history
+  and redirects are preserved). Module path rewritten repo-wide; full suite green
+  under it; local `origin` already points at the new URL.
 - **Standalone CLI shipped**: `cmd/assay`, `assay inspect <path>` runs the same
   inspector + policy spine cluster-free. CI exit codes (0 Approved / 2 Review /
   3 Quarantined / 1 error), `--json`, `make cli` / `cli-release`.
