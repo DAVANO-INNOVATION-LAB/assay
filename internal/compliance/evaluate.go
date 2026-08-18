@@ -12,12 +12,12 @@ type Status string
 
 const (
 	// StatusSatisfied — the control's intent is met, either by technical
-	// evidence Zeus produced or by evidence plus a current attestation.
+	// evidence Assay produced or by evidence plus a current attestation.
 	StatusSatisfied Status = "Satisfied"
-	// StatusPartiallySatisfied — Zeus evidences part of the control, but the
+	// StatusPartiallySatisfied — Assay evidences part of the control, but the
 	// remainder is organizational and has not been attested.
 	StatusPartiallySatisfied Status = "PartiallySatisfied"
-	// StatusNotSatisfied — Zeus looked and the evidence is missing or failing.
+	// StatusNotSatisfied — Assay looked and the evidence is missing or failing.
 	StatusNotSatisfied Status = "NotSatisfied"
 	// StatusAttested — no technical evidence is possible; a named person
 	// attested to the control and the attestation has not expired.
@@ -61,7 +61,7 @@ func TrustCharacteristics() []TrustCharacteristic {
 	}
 }
 
-// Evidence is what Zeus observed for one model version. The controller fills
+// Evidence is what Assay observed for one model version. The controller fills
 // this in from a ModelSecurityReport; keeping it a plain struct makes the
 // evaluator pure and testable without a cluster.
 type Evidence struct {
@@ -100,7 +100,7 @@ type Evidence struct {
 	BiasEvaluated bool
 }
 
-// Attestation is a human statement closing a control Zeus cannot observe.
+// Attestation is a human statement closing a control Assay cannot observe.
 type Attestation struct {
 	// ControlID the attestation covers.
 	ControlID string
@@ -314,7 +314,7 @@ func evaluateControl(ctrl Control, present map[EvidenceKind]bool, attestations m
 			return result
 		}
 		result.Status = StatusPartiallySatisfied
-		result.Reason = fmt.Sprintf("Zeus evidences %s; the organizational remainder is unattested. %s",
+		result.Reason = fmt.Sprintf("Assay evidences %s; the organizational remainder is unattested. %s",
 			joinKinds(result.EvidenceSeen), ctrl.Rationale)
 		return result
 	}
@@ -343,7 +343,7 @@ func observedEvidence(ev Evidence) map[EvidenceKind]bool {
 		EvidenceResidualRisk: ev.ResidualRisksDocumented,
 		EvidenceScanHistory:  ev.ContinuousMonitoring,
 		EvidenceRevocation:   ev.AdmissionEnforcing,
-		// Zeus always records what it did not measure, so once a scan is
+		// Assay always records what it did not measure, so once a scan is
 		// complete this evidence exists by construction.
 		EvidenceCoverageGap: true,
 		EvidenceBiasEval:    ev.BiasEvaluated,
@@ -353,7 +353,7 @@ func observedEvidence(ev Evidence) map[EvidenceKind]bool {
 // unmeasuredCharacteristics reports which of the seven trustworthiness
 // characteristics this scan did not evaluate.
 //
-// Zeus is an artifact scanner, so it speaks to security, and partially to
+// Assay is an artifact scanner, so it speaks to security, and partially to
 // privacy and accountability. It says nothing about validity, safety in the
 // behavioural sense, explainability, or fairness — and listing that is the
 // point, not a caveat.

@@ -1,8 +1,8 @@
-# Zeus Model Scanner
+# Assay
 
 **A Davano Innovation Lab project.**
 
-An OpenShift-native security platform for AI models. Zeus integrates directly
+An OpenShift-native security platform for AI models. Assay integrates directly
 with the OpenShift AI Model Registry, scans every registered model version,
 and blocks unapproved models at deployment time — the way Advanced Cluster
 Security works for containers, but purpose-built for model artifacts.
@@ -14,7 +14,7 @@ to Netlify from [`netlify.toml`](netlify.toml).
 
 Watching ImageStreams only catches models that happen to be packaged as
 container images. The Model Registry is where a model is *declared*, which
-means Zeus sees a model the moment it is registered, before anything tries to
+means Assay sees a model the moment it is registered, before anything tries to
 deploy it, and regardless of whether the bytes live in S3, ODF, a PVC, an OCI
 registry, or a ModelCar image.
 
@@ -48,7 +48,7 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Component | Package | State |
 |---|---|---|
 | Model Registry client | `internal/registry` | Working: list, paginate, patch properties |
-| Artifact resolvers | `internal/resolver` | OCI, ModelCar, S3/ODF, PVC, HTTP |
+| Artifact resolvers | `internal/resolver` | HTTP run end-to-end; OCI/S3/ODF/ModelCar compile but **untested against real storage**; PVC not yet mounted by the Job builder |
 | Scan orchestrator | `internal/controller` | Working: one Job per scanner |
 | Model inspector | `internal/inspector` | Working: pickle, archive, format analysis |
 | Result parsers | `internal/results` | Validated against real scanner output |
@@ -163,7 +163,7 @@ the scanner exits, and it is the single component in the pod holding a token.
 
 ## NIST AI RMF 1.0 reporting
 
-Zeus assesses every scanned model version against the AI RMF Core and records
+Assay assesses every scanned model version against the AI RMF Core and records
 the result as a `ComplianceReport`. The mapping is deliberately conservative.
 
 The AI RMF is a **voluntary organizational risk-management framework, not a
@@ -173,13 +173,13 @@ decision, that leadership accepted a risk. The honest split:
 
 | | Controls |
 |---|---|
-| Zeus evidences in full | 9 |
-| Zeus evidences in part | 24 |
+| Assay evidences in full | 9 |
+| Assay evidences in part | 24 |
 | Attestation-only | 39 |
 
 Two rules keep the report auditable:
 
-- **A control Zeus cannot observe never comes back `Satisfied` from a scan.**
+- **A control Assay cannot observe never comes back `Satisfied` from a scan.**
   It requires a `ControlAttestation` naming a person, with an expiry, or it
   stays open. An expired attestation reopens its control; an unattributed one
   is rejected outright.
@@ -196,7 +196,7 @@ kubectl apply -f config/samples/compliance.yaml
 ```
 
 ```bash
-kubectl get compliancereports -n zeus-system
+kubectl get compliancereports -n assay-system
 ```
 
 ## Custom resources
@@ -229,7 +229,7 @@ make docker-build docker-push scanners scanners-push
 make install deploy
 ```
 
-Then point Zeus at a registry and give it a policy:
+Then point Assay at a registry and give it a policy:
 
 ```bash
 kubectl apply -f config/samples/policy.yaml
@@ -239,25 +239,25 @@ kubectl apply -f config/samples/connector.yaml
 Opt a namespace into deployment gating:
 
 ```bash
-kubectl label namespace my-models security.zeus.io/enforce=true
+kubectl label namespace my-models security.davano.io/enforce=true
 ```
 
 Watch what happens:
 
 ```bash
-kubectl get artifactscans -n zeus-system -w
+kubectl get artifactscans -n assay-system -w
 ```
 
 ## Enforcement defaults
 
-Two defaults are deliberately permissive so that installing Zeus cannot break
+Two defaults are deliberately permissive so that installing Assay cannot break
 a running cluster, and both should be tightened once coverage is complete:
 
 - `--require-report=false` admits models that have never been scanned. Set it
   to `true` once every model in the registry has a report.
-- The webhook's `failurePolicy: Ignore` keeps a Zeus outage from blocking all
+- The webhook's `failurePolicy: Ignore` keeps a Assay outage from blocking all
   model deployments. `Fail` is the stronger setting, because `Ignore` means
-  anyone who can disrupt Zeus can also bypass the gate.
+  anyone who can disrupt Assay can also bypass the gate.
 
 ## Development
 
@@ -273,9 +273,16 @@ kubebuilder markers; `make generate` regenerates DeepCopy methods.
 **Phase 1 (current)** — registry connector, scan orchestration, malware and
 CVE scanning, SBOM, admission gate.
 
-**Phase 2** — cosign/Sigstore verification against `TrustedPublisher`, AI
-safety evaluation (prompt injection, jailbreak, backdoor detection),
+**Phase 2** — cosign/Sigstore verification against `TrustedPublisher`,
 promotion workflows, OpenShift console plugin.
+
+> **On "AI safety" evaluation.** Prompt-injection resistance, backdoor
+> detection, and adversarial robustness are open research problems, not
+> shippable scanner checks. Assay deliberately does **not** claim them. The
+> product line is supply-chain security for the model *artifact* — malware,
+> unsafe deserialization, CVEs, secrets, provenance — where the checks are
+> concrete and verifiable. Anything model-*behaviour* is out of scope by
+> design, not on a roadmap.
 
 **Phase 3** — multi-cluster federation, Hugging Face / MLflow / Kubeflow
 connectors, continuous compliance and runtime monitoring.

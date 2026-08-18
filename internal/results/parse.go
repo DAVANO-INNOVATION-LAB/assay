@@ -1,4 +1,4 @@
-// Package results parses scanner output into Zeus findings. Each scanner has
+// Package results parses scanner output into Assay findings. Each scanner has
 // its own format; normalizing here keeps the policy engine format-agnostic.
 package results
 
@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
-	"github.com/zeus-security/zeus-operator/internal/scanners"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	"github.com/JUMP1ST/assay/internal/scanners"
 )
 
 // Parsed is the normalized output of one scanner run.
@@ -37,8 +37,8 @@ func Parse(format, path string) (*Parsed, error) {
 	}
 
 	switch format {
-	case scanners.FormatZeus:
-		return parseZeus(data)
+	case scanners.FormatAssay:
+		return parseAssay(data)
 	case scanners.FormatClamAV:
 		return parseClamAV(data)
 	case scanners.FormatTrivyJSON:
@@ -54,18 +54,18 @@ func Parse(format, path string) (*Parsed, error) {
 	}
 }
 
-// zeusReport is the native format Zeus-authored scanners emit.
-type zeusReport struct {
+// assayReport is the native format Assay-authored scanners emit.
+type assayReport struct {
 	Findings []securityv1alpha1.Finding `json:"findings"`
 }
 
-func parseZeus(data []byte) (*Parsed, error) {
+func parseAssay(data []byte) (*Parsed, error) {
 	if len(strings.TrimSpace(string(data))) == 0 {
 		return &Parsed{}, nil
 	}
-	var report zeusReport
+	var report assayReport
 	if err := json.Unmarshal(data, &report); err != nil {
-		return nil, fmt.Errorf("parse zeus report: %w", err)
+		return nil, fmt.Errorf("parse assay report: %w", err)
 	}
 	return finalize(report.Findings), nil
 }

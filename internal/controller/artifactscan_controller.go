@@ -16,9 +16,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
-	"github.com/zeus-security/zeus-operator/internal/policy"
-	"github.com/zeus-security/zeus-operator/internal/scanners"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	"github.com/JUMP1ST/assay/internal/policy"
+	"github.com/JUMP1ST/assay/internal/scanners"
 )
 
 // ArtifactScanReconciler drives one ArtifactScan through fetch, scan, and
@@ -29,13 +29,13 @@ type ArtifactScanReconciler struct {
 	JobConfig JobConfig
 }
 
-// +kubebuilder:rbac:groups=security.zeus.io,resources=artifactscans,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=security.zeus.io,resources=artifactscans/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=security.zeus.io,resources=artifactscanreports,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=security.zeus.io,resources=artifactscanpolicies,verbs=get;list;watch
-// +kubebuilder:rbac:groups=security.zeus.io,resources=artifactexceptions,verbs=get;list;watch
-// +kubebuilder:rbac:groups=security.zeus.io,resources=modelsecurityreports,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=security.zeus.io,resources=modelsecurityreports/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=security.davano.io,resources=artifactscans,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=security.davano.io,resources=artifactscans/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=security.davano.io,resources=artifactscanreports,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=security.davano.io,resources=artifactscanpolicies,verbs=get;list;watch
+// +kubebuilder:rbac:groups=security.davano.io,resources=artifactexceptions,verbs=get;list;watch
+// +kubebuilder:rbac:groups=security.davano.io,resources=modelsecurityreports,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=security.davano.io,resources=modelsecurityreports/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
@@ -311,7 +311,7 @@ func (r *ArtifactScanReconciler) upsertModelSecurityReport(ctx context.Context, 
 			report.Labels = map[string]string{}
 		}
 		report.Labels[LabelManagedBy] = ManagerName
-		report.Labels["security.zeus.io/model"] = sanitizeLabel(scan.Spec.ModelName)
+		report.Labels["security.davano.io/model"] = sanitizeLabel(scan.Spec.ModelName)
 		return nil
 	})
 	if err != nil {

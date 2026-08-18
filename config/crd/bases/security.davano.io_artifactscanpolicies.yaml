@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
-  name: artifactscanpolicies.security.zeus.io
+  name: artifactscanpolicies.security.davano.io
 spec:
-  group: security.zeus.io
+  group: security.davano.io
   names:
     kind: ArtifactScanPolicy
     listKind: ArtifactScanPolicyList

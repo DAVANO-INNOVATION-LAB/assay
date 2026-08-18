@@ -8,7 +8,7 @@
 # never made it into the image.
 set -euo pipefail
 
-REGISTRY="${1:-quay.io/zeus-security}"
+REGISTRY="${1:-quay.io/davano}"
 TAG="${2:-0.1.0}"
 
 WORK="$(mktemp -d)"

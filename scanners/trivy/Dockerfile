@@ -31,8 +31,8 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 COPY --from=fetcher /usr/local/bin/trivy /usr/local/bin/trivy
 COPY --from=fetcher /opt/trivy-db /opt/trivy-db
-COPY entrypoint.sh /usr/local/bin/zeus-scan
-RUN chmod 0755 /usr/local/bin/zeus-scan && chmod -R a+rX /opt/trivy-db
+COPY entrypoint.sh /usr/local/bin/assay-scan
+RUN chmod 0755 /usr/local/bin/assay-scan && chmod -R a+rX /opt/trivy-db
 
 # The baked DB lives on the read-only root filesystem. Trivy also wants to
 # write a scan cache, which is kept in memory so no writable cache dir is
@@ -46,4 +46,4 @@ ENV HOME=/tmp \
     TRIVY_DISABLE_TELEMETRY=true
 
 USER 65532:65532
-ENTRYPOINT ["/usr/local/bin/zeus-scan"]
+ENTRYPOINT ["/usr/local/bin/assay-scan"]

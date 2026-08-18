@@ -49,7 +49,7 @@ func TestObjectDtypeNumpyArrayIsFlagged(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "objects.npy", append(npyHeader("|O"), randomBytes(256, 2)...))
 
-	if report := inspect(t, dir); !hasID(report, "ZEUS-NPY-001") {
+	if report := inspect(t, dir); !hasID(report, "ASSAY-NPY-001") {
 		t.Fatalf("did not flag an object-dtype array; findings: %v", findingIDs(report))
 	}
 }

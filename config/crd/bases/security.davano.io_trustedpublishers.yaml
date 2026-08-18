@@ -4,39 +4,28 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
-  name: modelregistryconnectors.security.zeus.io
+  name: trustedpublishers.security.davano.io
 spec:
-  group: security.zeus.io
+  group: security.davano.io
   names:
-    kind: ModelRegistryConnector
-    listKind: ModelRegistryConnectorList
-    plural: modelregistryconnectors
-    shortNames:
-    - mrc
-    singular: modelregistryconnector
+    kind: TrustedPublisher
+    listKind: TrustedPublisherList
+    plural: trustedpublishers
+    singular: trustedpublisher
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.registryURL
-      name: Registry
+    - jsonPath: .spec.displayName
+      name: Display Name
       type: string
-    - jsonPath: .status.phase
-      name: Phase
-      type: string
-    - jsonPath: .status.registeredModels
-      name: Models
-      type: integer
-    - jsonPath: .status.scansCreated
-      name: Scans
-      type: integer
-    - jsonPath: .status.lastSyncTime
-      name: Last Sync
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
       type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: ModelRegistryConnector connects Zeus to an OpenShift AI Model
-          Registry.
+        description: TrustedPublisher declares a signer whose model artifacts are
+          trusted.
         properties:
           apiVersion:
             description: |-
@@ -56,58 +45,42 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              ModelRegistryConnectorSpec defines a connection to an OpenShift AI
-              (Kubeflow) Model Registry instance to watch for models to scan.
+            description: TrustedPublisherSpec declares a publisher whose signatures
+              Assay trusts.
             properties:
-              authSecretRef:
-                description: |-
-                  AuthSecretRef references a Secret containing a bearer token used to
-                  authenticate against the registry.
+              cosignPublicKey:
+                description: CosignPublicKey is a PEM-encoded public key for key-based
+                  verification.
+                type: string
+              displayName:
+                description: DisplayName for the console.
+                type: string
+              keylessIdentity:
+                description: KeylessIdentity for Sigstore keyless verification.
                 properties:
-                  key:
-                    default: token
+                  issuer:
+                    description: Issuer is the OIDC issuer URL (e.g. https://token.actions.githubusercontent.com).
                     type: string
-                  name:
+                  subject:
+                    description: |-
+                      Subject is the certificate identity (email or workflow URI). Supports
+                      a trailing glob.
                     type: string
                 required:
-                - name
+                - issuer
+                - subject
                 type: object
-              includeModels:
+              uriPrefixes:
                 description: |-
-                  IncludeModels restricts scanning to registered models whose name
-                  matches one of these globs. Empty means all models.
+                  URIPrefixes limits which artifact URIs this publisher may sign
+                  (e.g. oci://registry.internal/models/). Empty means any.
                 items:
                   type: string
                 type: array
-              insecureSkipTLSVerify:
-                description: InsecureSkipTLSVerify disables TLS certificate verification.
-                type: boolean
-              policyRef:
-                description: |-
-                  PolicyRef names the ArtifactScanPolicy applied to scans created by
-                  this connector. Empty selects the built-in default scanner set.
-                type: string
-              pollInterval:
-                description: |-
-                  PollInterval controls how often the registry is polled for new
-                  models and versions. Defaults to 1m.
-                type: string
-              registryURL:
-                description: |-
-                  RegistryURL is the base URL of the Model Registry REST API,
-                  e.g. https://model-registry.rhoai-model-registries.svc:8080
-                type: string
-              writeBack:
-                description: |-
-                  WriteBack controls whether scan summaries are written back into the
-                  Model Registry as custom properties. Defaults to true.
-                type: boolean
-            required:
-            - registryURL
             type: object
           status:
-            description: ModelRegistryConnectorStatus reports sync progress.
+            description: TrustedPublisherStatus reports validation of the publisher
+              config.
             properties:
               conditions:
                 items:
@@ -165,27 +138,6 @@ spec:
                   - type
                   type: object
                 type: array
-              lastSyncTime:
-                format: date-time
-                type: string
-              message:
-                type: string
-              modelVersions:
-                format: int32
-                type: integer
-              phase:
-                enum:
-                - Pending
-                - Connected
-                - Degraded
-                - Error
-                type: string
-              registeredModels:
-                format: int32
-                type: integer
-              scansCreated:
-                format: int32
-                type: integer
             type: object
         type: object
     served: true

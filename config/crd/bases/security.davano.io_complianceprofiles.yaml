@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
-  name: complianceprofiles.security.zeus.io
+  name: complianceprofiles.security.davano.io
 spec:
-  group: security.zeus.io
+  group: security.davano.io
   names:
     kind: ComplianceProfile
     listKind: ComplianceProfileList
@@ -54,7 +54,7 @@ spec:
           spec:
             description: |-
               ComplianceProfileSpec declares a governance framework to report against and
-              carries the organizational attestations Zeus cannot produce itself.
+              carries the organizational attestations Assay cannot produce itself.
             properties:
               attestations:
                 description: Attestations close controls that have no technical evidence
@@ -118,7 +118,7 @@ spec:
                     justification:
                       description: |-
                         Justification for the exclusion. Required — an unexplained exclusion
-                        is indistinguishable from an oversight, so Zeus rejects it.
+                        is indistinguishable from an oversight, so Assay rejects it.
                       minLength: 1
                       type: string
                   required:

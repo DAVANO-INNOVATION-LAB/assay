@@ -28,7 +28,7 @@ type PVCResolver struct {
 func (p *PVCResolver) Scheme() string { return "pvc" }
 
 // Resolve implements Resolver.
-func (p *PVCResolver) Resolve(_ context.Context, uri, _ string) (*Artifact, error) {
+func (p *PVCResolver) Resolve(_ context.Context, uri, destDir string) (*Artifact, error) {
 	u, err := parseURL(uri)
 	if err != nil {
 		return nil, err
@@ -57,15 +57,95 @@ func (p *PVCResolver) Resolve(_ context.Context, uri, _ string) (*Artifact, erro
 	if err != nil {
 		return nil, err
 	}
-	_ = info
+
+	// Copy into the staging directory rather than pointing at the claim.
+	//
+	// Every resolver's contract is to materialise the artifact into destDir,
+	// because that is the only path the scan container mounts. Returning a
+	// path inside the claim instead left the workspace empty, and an empty
+	// workspace does not fail — every scanner simply reports zero findings and
+	// the model is approved. A silent false negative is the worst outcome this
+	// component can produce, so the copy is not optional.
+	//
+	// It also preserves the isolation model: the scanner reads a copy in an
+	// emptyDir, never the source claim.
+	if err := copyTree(local, destDir, info); err != nil {
+		return nil, err
+	}
 
 	return &Artifact{
 		URI:       uri,
 		Digest:    digest,
-		MediaType: "application/vnd.zeus.model-directory",
-		LocalPath: local,
+		MediaType: "application/vnd.assay.model-directory",
+		LocalPath: destDir,
 		SizeBytes: size,
 	}, nil
+}
+
+// copyTree materialises src (a file or directory) into destDir.
+//
+// Symlinks are skipped rather than followed. A model artifact is untrusted
+// input, and a link pointing outside the claim would otherwise pull host or
+// cluster files into the workspace and into the scan report.
+func copyTree(src, destDir string, info os.FileInfo) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return fmt.Errorf("create staging dir: %w", err)
+	}
+
+	if !info.IsDir() {
+		return copyFile(src, filepath.Join(destDir, filepath.Base(src)))
+	}
+
+	return filepath.Walk(src, func(path string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		target, err := safeJoin(destDir, rel)
+		if err != nil {
+			return err
+		}
+		switch {
+		case fi.IsDir():
+			return os.MkdirAll(target, 0o755)
+		case fi.Mode()&os.ModeSymlink != 0:
+			// Skipped deliberately; see the note above.
+			return nil
+		case fi.Mode().IsRegular():
+			return copyFile(path, target)
+		default:
+			// Devices, sockets, and pipes are not model data.
+			return nil
+		}
+	})
+}
+
+func copyFile(src, dst string) error {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", src, err)
+	}
+	defer in.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", dst, err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, in); err != nil {
+		return fmt.Errorf("copy %s: %w", src, err)
+	}
+	return nil
 }
 
 // HTTPResolver downloads a single artifact over HTTP(S). It is the fallback

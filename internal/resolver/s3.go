@@ -116,7 +116,7 @@ func (s *S3Resolver) Resolve(ctx context.Context, uri, destDir string) (*Artifac
 	return &Artifact{
 		URI:       uri,
 		Digest:    "sha256:" + hex.EncodeToString(hasher.Sum(nil)),
-		MediaType: "application/vnd.zeus.model-prefix",
+		MediaType: "application/vnd.assay.model-prefix",
 		LocalPath: destDir,
 		SizeBytes: total,
 	}, nil

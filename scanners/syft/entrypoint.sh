@@ -19,7 +19,7 @@ status=$?
 if [ ! -s "$OUTPUT" ]; then
     # Emit a valid empty document so the publish step can tell "scanned and
     # found nothing" apart from "never ran".
-    printf '{"spdxVersion":"SPDX-2.3","name":"zeus-empty","packages":[]}\n' > "$OUTPUT"
+    printf '{"spdxVersion":"SPDX-2.3","name":"assay-empty","packages":[]}\n' > "$OUTPUT"
     echo "syft produced no SBOM (exit ${status}); wrote an empty document" >&2
 fi
 

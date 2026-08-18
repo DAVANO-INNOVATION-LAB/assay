@@ -9,8 +9,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
-	"github.com/zeus-security/zeus-operator/internal/scanners"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	"github.com/JUMP1ST/assay/internal/scanners"
 )
 
 // Paths inside the scan pod.
@@ -18,20 +18,36 @@ const (
 	workspacePath = "/workspace"
 	resultsPath   = "/results"
 	tmpPath       = "/tmp"
+	// Must match resolver.PVCResolver's default MountRoot.
+	pvcMountRoot = "/mnt/pvc"
 )
 
-// Labels Zeus puts on scan Jobs so the controller can find them again.
+// pvcClaimOf returns the claim name from a pvc://claim/path URI.
+func pvcClaimOf(uri string) (string, bool) {
+	const scheme = "pvc://"
+	if !strings.HasPrefix(uri, scheme) {
+		return "", false
+	}
+	rest := strings.TrimPrefix(uri, scheme)
+	claim, _, _ := strings.Cut(rest, "/")
+	if claim == "" {
+		return "", false
+	}
+	return claim, true
+}
+
+// Labels Assay puts on scan Jobs so the controller can find them again.
 const (
-	LabelScan      = "security.zeus.io/scan"
-	LabelScanner   = "security.zeus.io/scanner"
+	LabelScan      = "security.davano.io/scan"
+	LabelScanner   = "security.davano.io/scanner"
 	LabelManagedBy = "app.kubernetes.io/managed-by"
-	ManagerName    = "zeus-operator"
+	ManagerName    = "assay-operator"
 )
 
 // JobConfig holds the cluster-level settings the orchestrator needs.
 type JobConfig struct {
-	// OperatorImage is the Zeus image, used for the fetch and publish steps
-	// and for scanners implemented by the Zeus runner.
+	// OperatorImage is the Assay image, used for the fetch and publish steps
+	// and for scanners implemented by the Assay runner.
 	OperatorImage string
 	// ScannerRegistry is the host and namespace holding the scanner images.
 	// Air-gapped clusters set this to their mirror. Empty uses the default.
@@ -127,6 +143,28 @@ func buildScanJob(scan *securityv1alpha1.ArtifactScan, def scanners.Definition, 
 	}
 
 	fetchMounts := mounts
+
+	// A pvc:// artifact lives on a claim the fetch step has to be able to read.
+	// The resolver expects it at pvcMountRoot/<claim>, and without this the URI
+	// resolves to a path that is simply not present in the pod — so the scheme
+	// failed at runtime despite being implemented.
+	if claim, ok := pvcClaimOf(scan.Spec.Artifact.URI); ok {
+		volumes = append(volumes, corev1.Volume{
+			Name: "artifact-pvc",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: claim,
+					ReadOnly:  true,
+				},
+			},
+		})
+		fetchMounts = append(append([]corev1.VolumeMount{}, fetchMounts...), corev1.VolumeMount{
+			Name:      "artifact-pvc",
+			MountPath: pvcMountRoot + "/" + claim,
+			ReadOnly:  true,
+		})
+	}
+
 	if cfg.PullSecret != "" {
 		volumes = append(volumes, corev1.Volume{
 			Name: "pull-secret",
@@ -236,7 +274,7 @@ func buildScanJob(scan *securityv1alpha1.ArtifactScan, def scanners.Definition, 
 						{
 							Name:    "fetch",
 							Image:   cfg.OperatorImage,
-							Command: []string{"/zeus-runner"},
+							Command: []string{"/assay-runner"},
 							Args: []string{
 								"fetch",
 								"--uri", scan.Spec.Artifact.URI,
@@ -271,7 +309,7 @@ func buildScanJob(scan *securityv1alpha1.ArtifactScan, def scanners.Definition, 
 						{
 							Name:    "publish",
 							Image:   cfg.OperatorImage,
-							Command: []string{"/zeus-runner"},
+							Command: []string{"/assay-runner"},
 							Args: []string{
 								"publish",
 								"--scan", scan.Name,

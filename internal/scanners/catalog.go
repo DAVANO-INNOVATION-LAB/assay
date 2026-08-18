@@ -25,11 +25,11 @@ const (
 	CategoryAISafety   Category = "aisafety"
 )
 
-// DefaultRegistry is where the Zeus scanner images are published. Air-gapped
+// DefaultRegistry is where the Assay scanner images are published. Air-gapped
 // clusters mirror these and point the operator at the mirror with
 // --scanner-registry, so image references are never hardcoded to a host the
 // cluster cannot reach.
-const DefaultRegistry = "quay.io/zeus-security"
+const DefaultRegistry = "quay.io/davano"
 
 // ImageTag pins the scanner image version. A security scanner must be
 // reproducible: :latest would silently change what a recorded verdict means.
@@ -43,7 +43,7 @@ type Definition struct {
 	Category Category
 	// Image is the repository name within the scanner registry, without a
 	// registry host or tag. Empty means the scanner is implemented by the
-	// Zeus runner and uses the operator image.
+	// Assay runner and uses the operator image.
 	Image string
 	// Command overrides the image entrypoint.
 	Command []string
@@ -70,7 +70,7 @@ const (
 
 // Result formats the publisher understands.
 const (
-	FormatZeus       = "zeus"
+	FormatAssay      = "assay"
 	FormatClamAV     = "clamav"
 	FormatTrivyJSON  = "trivy-json"
 	FormatGrypeJSON  = "grype-json"
@@ -80,7 +80,7 @@ const (
 
 // catalog is the built-in scanner set.
 //
-// Every Zeus scanner image exposes the same contract: its entrypoint takes
+// Every Assay scanner image exposes the same contract: its entrypoint takes
 // exactly two positional arguments, the staged artifact directory and the
 // output file. Tool-specific flags live in the image's entrypoint script
 // rather than here, so the catalog never has to encode one tool's CLI, and a
@@ -101,7 +101,7 @@ var catalog = map[string]Definition{
 		Image:        "scanner-yara",
 		Args:         []string{PlaceholderWorkspace, PlaceholderResults + "/yara.json"},
 		OutputFile:   "yara.json",
-		ResultFormat: FormatZeus,
+		ResultFormat: FormatAssay,
 	},
 	"trivy": {
 		Name:         "trivy",
@@ -145,21 +145,21 @@ var catalog = map[string]Definition{
 	"model-inspector": {
 		Name:           "model-inspector",
 		Category:       CategoryModel,
-		Image:          "", // filled in with the Zeus operator image at job build time
-		Command:        []string{"/zeus-runner"},
+		Image:          "", // filled in with the Assay operator image at job build time
+		Command:        []string{"/assay-runner"},
 		Args:           []string{"inspect", "--workspace", PlaceholderWorkspace, "--out", PlaceholderResults + "/model-inspector.json"},
 		OutputFile:     "model-inspector.json",
-		ResultFormat:   FormatZeus,
+		ResultFormat:   FormatAssay,
 		DefaultEnabled: true,
 	},
 	"provenance": {
 		Name:           "provenance",
 		Category:       CategoryProvenance,
 		Image:          "",
-		Command:        []string{"/zeus-runner"},
+		Command:        []string{"/assay-runner"},
 		Args:           []string{"verify-provenance", "--workspace", PlaceholderWorkspace, "--out", PlaceholderResults + "/provenance.json"},
 		OutputFile:     "provenance.json",
-		ResultFormat:   FormatZeus,
+		ResultFormat:   FormatAssay,
 		DefaultEnabled: true,
 	},
 	"license": {
@@ -168,7 +168,7 @@ var catalog = map[string]Definition{
 		Image:        "scanner-license",
 		Args:         []string{PlaceholderWorkspace, PlaceholderResults + "/license.json"},
 		OutputFile:   "license.json",
-		ResultFormat: FormatZeus,
+		ResultFormat: FormatAssay,
 	},
 	"ai-safety": {
 		Name:         "ai-safety",
@@ -176,13 +176,13 @@ var catalog = map[string]Definition{
 		Image:        "scanner-ai-safety",
 		Args:         []string{PlaceholderWorkspace, PlaceholderResults + "/ai-safety.json"},
 		OutputFile:   "ai-safety.json",
-		ResultFormat: FormatZeus,
+		ResultFormat: FormatAssay,
 	},
 }
 
 // ResolveImage returns the fully qualified image for a scanner.
 //
-// operatorImage is used for scanners implemented by the Zeus runner. registry
+// operatorImage is used for scanners implemented by the Assay runner. registry
 // is the host and namespace holding the scanner images; an empty value falls
 // back to DefaultRegistry, which lets an air-gapped cluster point at a mirror
 // without any change to the catalog.
@@ -227,6 +227,6 @@ func Defaults() []string {
 	return names
 }
 
-// UsesOperatorImage reports whether a scanner is implemented by the Zeus
+// UsesOperatorImage reports whether a scanner is implemented by the Assay
 // runner binary rather than an external tool image.
 func UsesOperatorImage(def Definition) bool { return def.Image == "" }

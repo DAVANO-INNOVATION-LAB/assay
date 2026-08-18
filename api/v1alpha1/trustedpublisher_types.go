@@ -13,7 +13,7 @@ type KeylessIdentity struct {
 	Subject string `json:"subject"`
 }
 
-// TrustedPublisherSpec declares a publisher whose signatures Zeus trusts.
+// TrustedPublisherSpec declares a publisher whose signatures Assay trusts.
 type TrustedPublisherSpec struct {
 	// DisplayName for the console.
 	// +optional

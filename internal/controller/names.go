@@ -4,7 +4,7 @@ import (
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/zeus-security/zeus-operator/internal/naming"
+	"github.com/JUMP1ST/assay/internal/naming"
 )
 
 // setCondition upserts a status condition, filling in the transition time.

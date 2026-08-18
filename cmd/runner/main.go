@@ -1,10 +1,10 @@
-// Command runner is the in-pod half of Zeus. Scan Jobs invoke it three ways:
+// Command runner is the in-pod half of Assay. Scan Jobs invoke it three ways:
 //
 //	fetch    resolve an artifact URI and stage the bytes into the workspace
 //	inspect  run the built-in model-format scanner over the workspace
 //	publish  parse a scanner's output and record an ArtifactScanReport
 //
-// Keeping these in one binary means the scan pod only needs the Zeus image
+// Keeping these in one binary means the scan pod only needs the Assay image
 // plus the scanner image, and only the publish step ever holds cluster
 // credentials.
 package main
@@ -26,11 +26,11 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
-	"github.com/zeus-security/zeus-operator/internal/inspector"
-	"github.com/zeus-security/zeus-operator/internal/naming"
-	"github.com/zeus-security/zeus-operator/internal/resolver"
-	"github.com/zeus-security/zeus-operator/internal/results"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	"github.com/JUMP1ST/assay/internal/inspector"
+	"github.com/JUMP1ST/assay/internal/naming"
+	"github.com/JUMP1ST/assay/internal/resolver"
+	"github.com/JUMP1ST/assay/internal/results"
 )
 
 func main() {
@@ -62,19 +62,19 @@ func main() {
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "zeus-runner %s: %v\n", os.Args[1], err)
+		fmt.Fprintf(os.Stderr, "assay-runner %s: %v\n", os.Args[1], err)
 		os.Exit(1)
 	}
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `zeus-runner - in-pod scan steps for Zeus Model Scanner
+	fmt.Fprint(os.Stderr, `assay-runner - in-pod scan steps for Assay
 
 Usage:
-  zeus-runner fetch   --uri URI --dest DIR [--metadata FILE]
-  zeus-runner inspect --workspace DIR --out FILE
-  zeus-runner publish --scan NAME --namespace NS --scanner NAME --format FMT --results FILE [--metadata FILE]
-  zeus-runner verify-provenance --workspace DIR --out FILE
+  assay-runner fetch   --uri URI --dest DIR [--metadata FILE]
+  assay-runner inspect --workspace DIR --out FILE
+  assay-runner publish --scan NAME --namespace NS --scanner NAME --format FMT --results FILE [--metadata FILE]
+  assay-runner verify-provenance --workspace DIR --out FILE
 `)
 }
 
@@ -171,7 +171,7 @@ func runVerifyProvenance(args []string) error {
 		Findings []securityv1alpha1.Finding `json:"findings"`
 	}{
 		Findings: []securityv1alpha1.Finding{{
-			ID:          "ZEUS-PROV-001",
+			ID:          "ASSAY-PROV-001",
 			Title:       "No verified signature",
 			Severity:    "Medium",
 			Category:    "provenance",
@@ -237,8 +237,8 @@ func runPublish(ctx context.Context, args []string) error {
 			Name:      naming.ScanReport(*scanName, *scannerName),
 			Namespace: *namespace,
 			Labels: map[string]string{
-				"security.zeus.io/scan":    *scanName,
-				"security.zeus.io/scanner": *scannerName,
+				"security.davano.io/scan":    *scanName,
+				"security.davano.io/scanner": *scannerName,
 			},
 		},
 		Scanner: *scannerName,
@@ -259,8 +259,8 @@ func runPublish(ctx context.Context, args []string) error {
 			if report.Annotations == nil {
 				report.Annotations = map[string]string{}
 			}
-			report.Annotations["security.zeus.io/artifact-digest"] = metadata.Digest
-			report.Annotations["security.zeus.io/artifact-uri"] = metadata.URI
+			report.Annotations["security.davano.io/artifact-digest"] = metadata.Digest
+			report.Annotations["security.davano.io/artifact-uri"] = metadata.URI
 		}
 	}
 

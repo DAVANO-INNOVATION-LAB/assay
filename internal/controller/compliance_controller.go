@@ -13,10 +13,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
-	"github.com/zeus-security/zeus-operator/internal/compliance"
-	"github.com/zeus-security/zeus-operator/internal/naming"
-	"github.com/zeus-security/zeus-operator/internal/scanners"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	"github.com/JUMP1ST/assay/internal/compliance"
+	"github.com/JUMP1ST/assay/internal/naming"
+	"github.com/JUMP1ST/assay/internal/scanners"
 )
 
 // ComplianceReconciler assesses each scanned model version against the
@@ -29,10 +29,10 @@ type ComplianceReconciler struct {
 	AdmissionEnforcing bool
 }
 
-// +kubebuilder:rbac:groups=security.zeus.io,resources=complianceprofiles,verbs=get;list;watch
-// +kubebuilder:rbac:groups=security.zeus.io,resources=complianceprofiles/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=security.zeus.io,resources=compliancereports,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=security.zeus.io,resources=compliancereports/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=security.davano.io,resources=complianceprofiles,verbs=get;list;watch
+// +kubebuilder:rbac:groups=security.davano.io,resources=complianceprofiles/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=security.davano.io,resources=compliancereports,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=security.davano.io,resources=compliancereports/status,verbs=get;update;patch
 
 // Reconcile assesses one ModelSecurityReport against every matching profile.
 func (r *ComplianceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -102,8 +102,8 @@ func (r *ComplianceReconciler) assess(ctx context.Context, securityReport *secur
 			report.Labels = map[string]string{}
 		}
 		report.Labels[LabelManagedBy] = ManagerName
-		report.Labels["security.zeus.io/model"] = naming.SanitizeLabel(securityReport.Spec.ModelName)
-		report.Labels["security.zeus.io/profile"] = naming.SanitizeLabel(profile.Name)
+		report.Labels["security.davano.io/model"] = naming.SanitizeLabel(securityReport.Spec.ModelName)
+		report.Labels["security.davano.io/profile"] = naming.SanitizeLabel(profile.Name)
 		return controllerutil.SetControllerReference(securityReport, report, r.Scheme)
 	})
 	if err != nil {

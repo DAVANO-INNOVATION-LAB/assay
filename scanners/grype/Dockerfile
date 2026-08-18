@@ -24,8 +24,8 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 COPY --from=fetcher /usr/local/bin/grype /usr/local/bin/grype
 COPY --from=fetcher /opt/grype-db /opt/grype-db
-COPY entrypoint.sh /usr/local/bin/zeus-scan
-RUN chmod 0755 /usr/local/bin/zeus-scan && chmod -R a+rX /opt/grype-db
+COPY entrypoint.sh /usr/local/bin/assay-scan
+RUN chmod 0755 /usr/local/bin/assay-scan && chmod -R a+rX /opt/grype-db
 
 ENV HOME=/tmp \
     XDG_CACHE_HOME=/tmp/cache \
@@ -34,4 +34,4 @@ ENV HOME=/tmp \
     GRYPE_CHECK_FOR_APP_UPDATE=false
 
 USER 65532:65532
-ENTRYPOINT ["/usr/local/bin/zeus-scan"]
+ENTRYPOINT ["/usr/local/bin/assay-scan"]

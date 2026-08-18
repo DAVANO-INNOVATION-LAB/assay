@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// fullEvidence is a model version where every scan Zeus can run has run and
+// fullEvidence is a model version where every scan Assay can run has run and
 // passed. It is deliberately the best case, so tests can assert what still
 // cannot be claimed even then.
 func fullEvidence() Evidence {
@@ -135,7 +135,7 @@ func TestBiasControlNotSatisfiedByCleanSecurityScan(t *testing.T) {
 	t.Error("fairness not listed among unmeasured characteristics despite no bias evaluation")
 }
 
-// Security and resilience is the one control Zeus exists to satisfy.
+// Security and resilience is the one control Assay exists to satisfy.
 func TestSecurityControlSatisfiedByCompleteScan(t *testing.T) {
 	assessment := Evaluate(NISTAIRMF(), fullEvidence(), nil, Scope{}, time.Now())
 
@@ -334,7 +334,7 @@ func TestUnmeasuredCharacteristicsAlwaysReported(t *testing.T) {
 		t.Fatal("no unmeasured characteristics reported; MEASURE 1.1 requires documenting what was not measured")
 	}
 
-	// Zeus is an artifact scanner: it cannot speak to validity, behavioural
+	// Assay is an artifact scanner: it cannot speak to validity, behavioural
 	// safety, or explainability regardless of how the scan went.
 	required := []TrustCharacteristic{TrustValidReliable, TrustSafe, TrustExplainable}
 	for _, want := range required {
