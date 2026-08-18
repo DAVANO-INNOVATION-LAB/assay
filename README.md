@@ -60,7 +60,7 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Admission gate | `internal/webhook` | Working: KServe, Deployments, Pods |
 | Scanner images | `scanners/` | Built: ClamAV, Trivy, Syft, TruffleHog, Grype |
 | AI RMF assessment | `internal/compliance` | Working: 72 controls, evidence-or-attestation |
-| Cosign verification | `cmd/runner` | Stub that fails closed |
+| Cosign verification | `cmd/runner` | **Stub, and enabled by default** — emits one Medium "no verified signature" finding on every scan, so a clean model scores 10 rather than 0. Disable the `provenance` scanner in your policy if that floor is confusing |
 | Behavioural AI evaluation | — | **Out of scope by design** — see the note under Roadmap |
 | Console plugin | — | Phase 2 |
 
@@ -70,12 +70,19 @@ disabled. CI runs build, vet, lint, the race-enabled unit suite, a CLI
 end-to-end check, and the live MLflow scan on every push. What has not happened
 yet is a run against a live OpenShift cluster with a real Model Registry.
 
-The one image carries all three binaries, so the scanner is usable with no
-cluster at all:
+> **No images are published yet.** `docker.io/davanolab` is empty, so every
+> `docker run`, `helm install` and `kubectl apply` below needs you to build and
+> push first — `make docker-build docker-push scanners scanners-push
+> REGISTRY=<your-namespace>`. Until then those commands fail with a pull error.
+> This is the first thing to fix before depending on any of it.
+
+The one image carries all three binaries, so once built the scanner is usable
+with no cluster at all:
 
 ```bash
+make docker-build REGISTRY=<your-namespace>
 docker run --rm --network none -v "$PWD/model:/m:ro" \
-  --entrypoint /assay docker.io/davanolab/assay-operator:latest inspect /m
+  --entrypoint /assay <your-namespace>/assay-operator:0.1.0 inspect /m
 ```
 
 ## Scanner images
@@ -101,6 +108,10 @@ constraints the operator applies in-cluster: no network, read-only root
 filesystem, non-root user, all capabilities dropped.
 
 ### Air-gap
+
+Nothing here *enforces* the absence of egress — there is no NetworkPolicy on
+scan pods, and `Definition.NeedsNetwork` is declared but unread. What follows
+is a property of how the images are built, not a control:
 
 Vulnerability and malware databases are baked in at build time, so a scan
 needs no egress at all — refreshing signatures means rebuilding the image.
@@ -300,7 +311,7 @@ kubectl get compliancereports -n assay-system
 | `ArtifactScanPolicy` | Scanner set, pass/fail rules, enforcement mode |
 | `ArtifactException` | Time-boxed waiver for specific rules |
 | `TrustedPublisher` | Signing identity whose artifacts are trusted |
-| `PromotionRequest` | Approval workflow for dev → stage → prod |
+| `PromotionRequest` | **Declared, not implemented** — no controller reads it, and `ApprovedEnvironments` is read by the admission gate but written by nothing, so environment gating never fires |
 | `ComplianceProfile` | Governance framework plus its human attestations |
 | `ComplianceReport` | A model version assessed against that framework |
 

@@ -85,7 +85,7 @@ func Evaluate(
 	now time.Time,
 ) Evaluation {
 	rules := effectiveRules(pol)
-	byCategory := groupByCategory(results)
+	byCategory, unresolved := groupByCategory(results)
 
 	eval := Evaluation{
 		MalwareStatus: statusFor(byCategory[scanners.CategoryMalware]),
@@ -97,6 +97,19 @@ func Evaluate(
 	eval.SignatureVerified = allPassed(byCategory[scanners.CategoryProvenance])
 
 	var violations []Violation
+
+	// A result whose scanner cannot be resolved has not been interpreted, so
+	// whatever it found has not been weighed. That is an incomplete scan, not
+	// a clean one.
+	if len(unresolved) > 0 {
+		violations = append(violations, Violation{
+			Rule:     RuleScanIncomplete,
+			Severity: "High",
+			Message: fmt.Sprintf(
+				"results from unrecognised scanner(s) could not be interpreted and were not counted: %s",
+				strings.Join(dedupeStrings(unresolved), ", ")),
+		})
+	}
 
 	// An incomplete scan is itself a policy failure: absence of findings is
 	// not evidence of safety.
@@ -285,16 +298,41 @@ func effectiveRules(pol *securityv1alpha1.ArtifactScanPolicy) securityv1alpha1.P
 	return pol.Spec.Rules
 }
 
-func groupByCategory(results []securityv1alpha1.ScannerResult) map[scanners.Category][]securityv1alpha1.ScannerResult {
+// groupByCategory buckets results by what they measure, and reports any
+// scanner it could not resolve.
+//
+// Dropping an unresolvable result silently was the most dangerous line in this
+// package: a result carrying twelve critical findings under a name not in the
+// catalog — a renamed scanner, a newer operator, a typo in a policy — vanished
+// from every category, so blockMalware and blockSecrets saw nothing, no
+// violation fired, and the verdict came back Approved at risk 0. Findings
+// became a clean bill of health by way of a name lookup.
+func groupByCategory(results []securityv1alpha1.ScannerResult) (map[scanners.Category][]securityv1alpha1.ScannerResult, []string) {
 	grouped := map[scanners.Category][]securityv1alpha1.ScannerResult{}
+	var unresolved []string
 	for _, r := range results {
 		def, err := scanners.Get(r.Scanner)
 		if err != nil {
+			unresolved = append(unresolved, r.Scanner)
 			continue
 		}
 		grouped[def.Category] = append(grouped[def.Category], r)
 	}
-	return grouped
+	sort.Strings(unresolved)
+	return grouped, unresolved
+}
+
+func dedupeStrings(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
 }
 
 func statusFor(results []securityv1alpha1.ScannerResult) string {
