@@ -9,6 +9,7 @@ import (
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/inspector"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/policy"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/resolver"
 	"time"
 )
 
@@ -94,5 +95,67 @@ func writeFile(t *testing.T, path string, data []byte) {
 	t.Helper()
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A file that could execute code and was never read must deny an Approved
+// verdict. Reporting it only in a coverage line meant a 548MB unread pickle
+// came back "Approved, risk 0/100" — the exact shape of a scanner that is
+// worse than none, because it certifies what it did not look at.
+func TestUnreadExecutableFilesDenyApproval(t *testing.T) {
+	cov := &resolver.Coverage{
+		FetchedWhole: []string{"config.json"},
+		HeaderOnly:   []string{"model.safetensors"},
+		Skipped: map[string]string{
+			"pytorch_model.bin": "548118077 bytes exceeds the fetch limit",
+			"README.md":         "not interesting",
+		},
+	}
+
+	gaps := coverageGaps(cov)
+	if len(gaps) != 1 {
+		t.Fatalf("got %d gap findings, want 1 (the pickle, not the README)", len(gaps))
+	}
+	if gaps[0].Location != "pytorch_model.bin" {
+		t.Errorf("flagged %q, want the unread pickle", gaps[0].Location)
+	}
+	if gaps[0].Severity != "High" {
+		t.Errorf("severity = %q; must be high enough to deny Approved", gaps[0].Severity)
+	}
+
+	// The finding has to survive into a verdict, not just exist.
+	sev := countSeverities(gaps)
+	eval := policy.Evaluate(
+		[]securityv1alpha1.ScannerResult{{
+			Scanner: "model-inspector", Status: "Failed",
+			Findings: int32(len(gaps)), Severities: sev,
+		}},
+		securityv1alpha1.ArtifactRef{URI: "hf://x/y"},
+		nil, nil, time.Now(),
+	)
+	if eval.RiskScore == 0 {
+		t.Error("an unread executable file contributed nothing to the risk score")
+	}
+
+	// A header-sampled safetensors is genuinely covered: the format cannot
+	// execute code, so sampling it is not a gap.
+	if len(coverageGaps(&resolver.Coverage{HeaderOnly: []string{"model.safetensors"}})) != 0 {
+		t.Error("a header-sampled safetensors was treated as an unscanned risk")
+	}
+	if coverageGaps(nil) != nil {
+		t.Error("a complete local scan reported coverage gaps")
+	}
+}
+
+func TestExecutableFormatsAreRecognisedBroadly(t *testing.T) {
+	for _, n := range []string{"a.pkl", "b.bin", "c.pt", "d.py", "e.h5", "f.zip", "g.so", "h.onnx"} {
+		if !resolver.CanExecuteCode(n) {
+			t.Errorf("%s is not treated as executable-capable; an unread one would pass as clean", n)
+		}
+	}
+	for _, n := range []string{"model.safetensors", "notes.md", "vocab.txt", "config.yaml"} {
+		if resolver.CanExecuteCode(n) {
+			t.Errorf("%s treated as executable-capable; that forces needless full downloads", n)
+		}
 	}
 }

@@ -23,6 +23,10 @@ type Artifact struct {
 	LocalPath string
 	// SizeBytes is the total staged size.
 	SizeBytes int64
+	// Coverage records what a partial fetch actually read. Nil means the
+	// whole artifact was staged. A scan over a partial fetch must say so:
+	// "no findings" over files that were never read is not a clean result.
+	Coverage *Coverage
 }
 
 // Resolver fetches an artifact from one class of storage backend.
@@ -45,6 +49,7 @@ func NewRegistry() *Registry {
 	r.Register(&ModelCarResolver{})
 	r.Register(&S3Resolver{})
 	r.Register(&PVCResolver{})
+	r.Register(&HuggingFaceResolver{})
 	r.Register(&HTTPResolver{scheme: "https"})
 	r.Register(&HTTPResolver{scheme: "http"})
 	return r
