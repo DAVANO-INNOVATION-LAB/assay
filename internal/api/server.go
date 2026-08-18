@@ -287,8 +287,11 @@ func (s *Server) handleCreateScan(w http.ResponseWriter, r *http.Request, sub au
 	scan.Spec.Artifact = securityv1alpha1.ArtifactRef{URI: req.URI, Format: req.Format}
 	scan.Spec.PolicyRef = req.PolicyRef
 	scan.Spec.Scanners = req.Scanners
-	// Who asked for this scan, for the audit trail.
-	scan.Annotations = map[string]string{"security.davano.io/requested-by": sub.Username}
+	// A scan somebody clicked is a different assurance from one a registry
+	// produced, so say which this was and who asked.
+	scan.Spec.Trigger = "Manual"
+	scan.Spec.TriggeredBy = sub.Username
+	scan.Labels = map[string]string{"security.davano.io/trigger": "Manual"}
 
 	if err := s.k8s.Create(r.Context(), scan); err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})

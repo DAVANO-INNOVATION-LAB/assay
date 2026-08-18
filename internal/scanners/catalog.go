@@ -79,11 +79,15 @@ type Definition struct {
 const (
 	PlaceholderWorkspace = "$(WORKSPACE)"
 	PlaceholderResults   = "$(RESULTS)"
+	// PlaceholderTrustPolicy is the rendered TrustedPublisher file, projected
+	// into provenance scans only.
+	PlaceholderTrustPolicy = "$(TRUST_POLICY)"
 )
 
 // Result formats the publisher understands.
 const (
 	FormatAssay      = "assay"
+	FormatDocket     = "docket"
 	FormatClamAV     = "clamav"
 	FormatTrivyJSON  = "trivy-json"
 	FormatGrypeJSON  = "grype-json"
@@ -168,14 +172,32 @@ var catalog = map[string]Definition{
 		DefaultEnabled: true,
 	},
 	"provenance": {
-		Name:           "provenance",
-		Category:       CategoryProvenance,
-		Image:          "",
-		Command:        []string{"/assay-runner"},
-		Args:           []string{"verify-provenance", "--workspace", PlaceholderWorkspace, "--out", PlaceholderResults + "/provenance.json"},
+		Name:     "provenance",
+		Category: CategoryProvenance,
+		Image:    "",
+		Command:  []string{"/assay-runner"},
+		Args: []string{"verify-provenance",
+			"--workspace", PlaceholderWorkspace,
+			"--out", PlaceholderResults + "/provenance.json",
+			"--trust-policy", PlaceholderTrustPolicy,
+			"--metadata", PlaceholderResults + "/artifact.json",
+		},
 		OutputFile:     "provenance.json",
 		ResultFormat:   FormatAssay,
 		DefaultEnabled: true,
+	},
+	"docket": {
+		Name:     "docket",
+		Category: CategorySBOM,
+		Image:    "scanner-docket",
+		// Emits a CycloneDX ML-BOM and reports where the model's declarations
+		// disagree with its binaries. Distinct from syft, which inventories
+		// packages; this describes the model itself.
+		Args:         []string{"drift", PlaceholderWorkspace, "--json"},
+		OutputFile:   "docket.json",
+		ResultFormat: FormatDocket,
+		// No image is published yet; see scanners/.
+		Unbuilt: true,
 	},
 	"license": {
 		Name:         "license",

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -31,6 +32,14 @@ type ArtifactScanReconciler struct {
 	// ScanDeadline bounds how long a scan may stay unfinished before it is
 	// failed. Zero uses DefaultScanDeadline.
 	ScanDeadline time.Duration
+	// TrustRootPath is a Sigstore trusted-root JSON file mounted into the
+	// operator. Empty means signature verification cannot chain certificates,
+	// which the provenance scanner reports rather than working around by
+	// fetching a root over the network — an air-gapped cluster cannot.
+	TrustRootPath string
+	// RequireTransparencyLog demands an auditable log entry, not just a valid
+	// signature.
+	RequireTransparencyLog bool
 }
 
 // +kubebuilder:rbac:groups=security.davano.io,resources=artifactscans,verbs=get;list;watch;create;update;patch;delete
@@ -40,7 +49,9 @@ type ArtifactScanReconciler struct {
 // +kubebuilder:rbac:groups=security.davano.io,resources=artifactexceptions,verbs=get;list;watch
 // +kubebuilder:rbac:groups=security.davano.io,resources=modelsecurityreports,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=security.davano.io,resources=modelsecurityreports/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=security.davano.io,resources=trustedpublishers,verbs=get;list;watch
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
@@ -89,6 +100,15 @@ func (r *ArtifactScanReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	if len(wanted) == 0 {
 		return r.fail(ctx, &scan, "policy selected no scanners")
+	}
+
+	// Refresh the rendered trust policy before any Job mounts it. Doing this
+	// after Job creation would let a provenance scan verify against a stale
+	// publisher set — including one a revoked publisher is still in.
+	if slices.Contains(wanted, "provenance") {
+		if err := SyncTrustPolicy(ctx, r.Client, scan.Namespace, r.TrustRootPath, r.RequireTransparencyLog); err != nil {
+			logger.Error(err, "could not render the trust policy", "scan", scan.Name)
+		}
 	}
 
 	// Ensure a Job exists for every selected scanner.

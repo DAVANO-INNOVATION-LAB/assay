@@ -98,6 +98,28 @@ spec:
                   RegistryURL is the base URL of the Model Registry REST API,
                   e.g. https://model-registry.rhoai-model-registries.svc:8080
                 type: string
+              rescanInterval:
+                description: |-
+                  RescanInterval re-scans a version this long after its last scan.
+
+                  A verdict is a statement about what was known when the scan ran. CVE
+                  databases move, so an artifact that passed last quarter has not been
+                  vouched for today — but nothing rescanned, so every verdict aged
+                  silently and a stale pass looked identical to a fresh one. Zero keeps
+                  the old behaviour of scanning each version exactly once.
+                type: string
+              type:
+                default: KubeflowModelRegistry
+                description: "Type selects the registry implementation behind this
+                  connector. Both\nare driven through the same ModelSource interface,
+                  so registry\nscanning is one pipeline with several front doors rather
+                  than a\nseparate integration per vendor.\n\n\tKubeflowModelRegistry
+                  \ the OpenShift AI / Kubeflow Model Registry\n\tMLflow                 an
+                  MLflow tracking server's model registry"
+                enum:
+                - KubeflowModelRegistry
+                - MLflow
+                type: string
               writeBack:
                 description: |-
                   WriteBack controls whether scan summaries are written back into the

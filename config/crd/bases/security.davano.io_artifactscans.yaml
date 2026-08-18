@@ -113,6 +113,27 @@ spec:
                 items:
                   type: string
                 type: array
+              trigger:
+                description: "Trigger records why this scan exists. Without it every
+                  scan looks the\nsame afterwards, and \"was this model checked when
+                  it was registered, or\nonly when someone tried to deploy it, or
+                  has it been rechecked since\"\nbecomes unanswerable — which is most
+                  of what an auditor asks.\n\n\tRegistry  a model source published
+                  a version\n\tRuntime   a workload tried to deploy it\n\tPeriodic
+                  \ a scheduled recheck, e.g. after a CVE database refresh\n\tManual
+                  \   a person asked for it\n\tPipeline  CI asked for it"
+                enum:
+                - Registry
+                - Runtime
+                - Periodic
+                - Manual
+                - Pipeline
+                type: string
+              triggeredBy:
+                description: |-
+                  TriggeredBy identifies what caused it: a connector name, a workload, or
+                  a username. Paired with Trigger it answers "who asked, and why".
+                type: string
             required:
             - artifact
             type: object

@@ -50,6 +50,7 @@ func NewRegistry() *Registry {
 	r.Register(&S3Resolver{})
 	r.Register(&PVCResolver{})
 	r.Register(&HuggingFaceResolver{})
+	r.Register(&MLflowResolver{})
 	r.Register(&HTTPResolver{scheme: "https"})
 	r.Register(&HTTPResolver{scheme: "http"})
 	return r

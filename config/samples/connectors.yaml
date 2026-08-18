@@ -1,0 +1,124 @@
+# Worked examples of every connector shape, meant to be copied and edited.
+#
+# A connector polls a model source, creates an ArtifactScan for each version it
+# has not seen, and writes the verdict back where the people who registered the
+# model will see it. Both source types run through the same ModelSource
+# interface, so this is one pipeline with several front doors rather than a
+# separate integration per vendor.
+#
+# Apply one at a time — each polls a real endpoint and will report Degraded if
+# that endpoint is not there.
+
+---
+# MLflow, unauthenticated — the shape for a local or in-cluster tracking server.
+#
+# This is the quickest thing to try: run MLflow, register a model, and watch a
+# verdict appear as assay.verdict / assay.risk_score tags on the version.
+#
+#   docker run -d -p 5000:5000 ghcr.io/mlflow/mlflow:v2.19.0 \
+#     mlflow server --host 0.0.0.0 --serve-artifacts \
+#     --backend-store-uri sqlite:////tmp/mlflow.db \
+#     --artifacts-destination /tmp/artifacts
+#
+# From inside kind, "localhost" is the pod, not your laptop. Use the address
+# the node sees the host on:
+#   docker exec <cluster>-control-plane sh -c "ip route | awk '/default/{print \$3}'"
+apiVersion: security.davano.io/v1alpha1
+kind: ModelRegistryConnector
+metadata:
+  name: mlflow-local
+  namespace: assay-system
+spec:
+  type: MLflow
+  registryURL: http://mlflow.mlflow.svc.cluster.local:5000
+  pollInterval: 1m
+
+  # Re-scan a version this long after its last verdict.
+  #
+  # A verdict describes what was known when the scan ran, and CVE data moves.
+  # Without this a version is scanned exactly once and a pass from last quarter
+  # is indistinguishable from one from this morning. Daily is a reasonable
+  # starting point; the rescan is recorded with trigger Periodic so you can
+  # tell a recheck from the original.
+  rescanInterval: 24h
+
+  # Omit to use the built-in default scanner set. Name a policy to narrow it —
+  # useful on a cluster that has not mirrored the scanner images yet, where
+  # only model-inspector runs (it ships in the operator image).
+  policyRef: ""
+
+---
+# MLflow behind authentication. The token is read from a Secret; nothing is
+# ever put in the connector itself.
+#
+#   kubectl create secret generic mlflow-token \
+#     --from-literal=token='<your token>' -n assay-system
+apiVersion: security.davano.io/v1alpha1
+kind: ModelRegistryConnector
+metadata:
+  name: mlflow-authenticated
+  namespace: assay-system
+spec:
+  type: MLflow
+  registryURL: https://mlflow.example.internal
+  pollInterval: 5m
+  rescanInterval: 24h
+  authSecretRef:
+    name: mlflow-token
+    key: token
+
+  # Only these models. Globs, matched against the registered model name —
+  # useful when one registry serves several teams and you are rolling Assay
+  # out to one of them first.
+  includeModels:
+    - "fraud-*"
+    - "risk-scoring"
+
+---
+# OpenShift AI / Kubeflow Model Registry — the platform Assay was built around.
+#
+# NOTE: this path has not been run against a live Model Registry. In
+# particular, the connector treats a model artifact's storageKey as an S3
+# bucket name; in OpenShift AI that field conventionally names the
+# data-connection Secret instead. Verify the s3:// URIs it produces before
+# trusting a verdict from this connector.
+apiVersion: security.davano.io/v1alpha1
+kind: ModelRegistryConnector
+metadata:
+  name: openshift-ai
+  namespace: assay-system
+spec:
+  type: KubeflowModelRegistry
+  registryURL: https://modelregistry-sample.rhoai-model-registries.svc.cluster.local:8080
+  pollInterval: 1m
+  rescanInterval: 24h
+  authSecretRef:
+    name: model-registry-token
+    key: token
+
+  # Internal CA not in the operator's trust store. Prefer mounting the CA over
+  # turning verification off.
+  insecureSkipTLSVerify: false
+
+  policyRef: production-baseline
+
+---
+# A policy that runs only the inspector.
+#
+# Every other scanner is a separate container image. On a cluster that has not
+# mirrored them, naming them means Jobs that cannot pull and scans that report
+# scanIncomplete — correctly, but unhelpfully. model-inspector ships inside the
+# operator image, so this always works and is the right starting point for a
+# first install.
+apiVersion: security.davano.io/v1alpha1
+kind: ArtifactScanPolicy
+metadata:
+  name: inspector-only
+  namespace: assay-system
+spec:
+  scanners:
+    - name: model-inspector
+  rules:
+    # The inspector's Critical findings mean the artifact executes code when it
+    # is loaded. That is disqualifying on its own.
+    blockUnsafeModel: true
