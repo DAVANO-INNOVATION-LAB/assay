@@ -45,6 +45,10 @@ test: fmt vet ## Run the unit test suite.
 cover: test ## Show per-package coverage.
 	go tool cover -func=cover.out
 
+.PHONY: test-mlflow
+test-mlflow: ## Live MLflow integration test (needs Docker + the mlflow image).
+	go test -tags mlflow_live -run TestMLflowLive ./internal/modelsource/ -v
+
 ##@ Build
 
 .PHONY: build
