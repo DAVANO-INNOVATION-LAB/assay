@@ -200,6 +200,14 @@ func TestOnlyPublishCarriesClusterCredentials(t *testing.T) {
 		t.Errorf("service account = %q, want the restricted scanner account", pod.ServiceAccountName)
 	}
 
+	// Checking only for an explicit mount is not enough: with automounting
+	// left on, the kubelet injects the token into every container at pod
+	// creation, where no unit test can see it. The pod has to opt out, and
+	// publish has to mount the token deliberately.
+	if pod.AutomountServiceAccountToken == nil || *pod.AutomountServiceAccountToken {
+		t.Error("pod does not disable automountServiceAccountToken; the kubelet will inject a token into the scan container")
+	}
+
 	scan := pod.InitContainers[1]
 	for _, m := range scan.VolumeMounts {
 		if strings.Contains(m.MountPath, "serviceaccount") {
@@ -210,6 +218,29 @@ func TestOnlyPublishCarriesClusterCredentials(t *testing.T) {
 		if strings.Contains(strings.ToUpper(e.Name), "TOKEN") {
 			t.Errorf("scan container receives a token via env %q", e.Name)
 		}
+	}
+
+	// fetch handles untrusted URIs and storage credentials, but has no reason
+	// to talk to the API server either.
+	for _, m := range pod.InitContainers[0].VolumeMounts {
+		if strings.Contains(m.MountPath, "serviceaccount") {
+			t.Errorf("fetch container mounts a service account token at %q", m.MountPath)
+		}
+	}
+
+	// publish is the one step that writes to the cluster, so it must still
+	// have a working in-cluster config.
+	var publishHasToken bool
+	for _, m := range pod.Containers[0].VolumeMounts {
+		if m.MountPath == "/var/run/secrets/kubernetes.io/serviceaccount" {
+			publishHasToken = true
+			if !m.ReadOnly {
+				t.Error("publish mounts its token writable")
+			}
+		}
+	}
+	if !publishHasToken {
+		t.Error("publish has no service account token; it cannot write its report")
 	}
 }
 
@@ -340,6 +371,64 @@ func TestPVCArtifactMountsTheClaimForFetch(t *testing.T) {
 	for _, m := range pod.InitContainers[1].VolumeMounts {
 		if m.Name == "artifact-pvc" {
 			t.Error("scan container mounts the artifact claim; only fetch should")
+		}
+	}
+}
+
+// A pull secret and a pvc:// artifact are both normal production settings, and
+// the mount lists for the two were built independently — the pull-secret branch
+// rebuilt fetchMounts from the base list and dropped the claim mount. The
+// result was a pod carrying an artifact-pvc volume that no container mounted,
+// which Kubernetes accepts silently: the fetch step then failed with a bare
+// "no such file or directory" for a path that was never going to exist.
+func TestPVCClaimSurvivesPullSecretMount(t *testing.T) {
+	scan := testScan()
+	scan.Spec.Artifact.URI = "pvc://model-store/models/fraud/v1"
+
+	cfg := testJobConfig()
+	cfg.PullSecret = "registry-pull-secret"
+
+	def, _ := scanners.Get("clamav")
+	job, err := buildScanJob(scan, def, nil, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetch := job.Spec.Template.Spec.InitContainers[0]
+
+	var gotClaim, gotPullSecret bool
+	for _, m := range fetch.VolumeMounts {
+		switch m.Name {
+		case "artifact-pvc":
+			gotClaim = true
+			if want := pvcMountRoot + "/model-store"; m.MountPath != want {
+				t.Errorf("claim mount path = %q, want %q", m.MountPath, want)
+			}
+		case "pull-secret":
+			gotPullSecret = true
+		}
+	}
+	if !gotClaim {
+		t.Error("fetch lost the artifact claim mount when a pull secret was configured")
+	}
+	if !gotPullSecret {
+		t.Error("fetch is missing the pull-secret mount")
+	}
+
+	// Every volume the pod declares must actually be mounted by some container;
+	// an unmounted volume is the silent half of this failure.
+	for _, v := range job.Spec.Template.Spec.Volumes {
+		var mountedSomewhere bool
+		containers := append([]corev1.Container{}, job.Spec.Template.Spec.InitContainers...)
+		containers = append(containers, job.Spec.Template.Spec.Containers...)
+		for _, c := range containers {
+			for _, m := range c.VolumeMounts {
+				if m.Name == v.Name {
+					mountedSomewhere = true
+				}
+			}
+		}
+		if !mountedSomewhere {
+			t.Errorf("volume %q is declared but mounted by no container", v.Name)
 		}
 	}
 }

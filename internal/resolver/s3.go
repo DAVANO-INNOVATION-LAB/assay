@@ -45,7 +45,12 @@ func (s *S3Resolver) Resolve(ctx context.Context, uri, destDir string) (*Artifac
 	if err != nil {
 		return nil, err
 	}
-	downloader := manager.NewDownloader(client)
+	// manager.Downloader is deprecated in favour of feature/s3/transfermanager,
+	// which is still pre-GA. Migrating is deferred until the MinIO integration
+	// test (make test-s3) can prove the replacement behaves identically against
+	// real object storage; swapping it blind would trade a working path for an
+	// unverified one.
+	downloader := manager.NewDownloader(client) //nolint:staticcheck // SA1019: see note above
 
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create staging dir: %w", err)
@@ -86,7 +91,7 @@ func (s *S3Resolver) Resolve(ctx context.Context, uri, destDir string) (*Artifac
 			if err != nil {
 				return nil, fmt.Errorf("create %s: %w", target, err)
 			}
-			n, err := downloader.Download(ctx, f, &s3.GetObjectInput{
+			n, err := downloader.Download(ctx, f, &s3.GetObjectInput{ //nolint:staticcheck // SA1019: see newS3Client note
 				Bucket: aws.String(bucket),
 				Key:    aws.String(key),
 			})

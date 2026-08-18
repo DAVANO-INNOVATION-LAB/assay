@@ -367,3 +367,72 @@ func TestInferenceServiceModelIsDerivedFromStorageURI(t *testing.T) {
 		t.Fatal("gate failed to derive the model from the KServe storageUri, so a quarantined model got through")
 	}
 }
+
+// The deployed layout puts scans and their reports in the operator's namespace
+// while the workloads being gated run in the teams' own namespaces. Looking
+// only in the workload's namespace found nothing, and "nothing" is read as
+// "unscanned" — so with the shipped --require-report=false the gate admitted
+// every workload it was installed to stop. These pin the split-namespace case.
+func TestGateFindsReportInThePipelineNamespace(t *testing.T) {
+	const pipelineNS = "assay-system"
+
+	quarantined := report("fraud", "v1", func(r *securityv1alpha1.ModelSecurityReport) {
+		r.Namespace = pipelineNS
+		r.Status.Verdict = securityv1alpha1.VerdictQuarantined
+		r.Status.RiskScore = 100
+	})
+
+	gate := newGate(t, quarantined)
+	gate.ReportNamespace = pipelineNS
+
+	// The workload lives in testNamespace; its report lives in pipelineNS.
+	resp := gate.Handle(context.Background(), deployment(map[string]string{
+		AnnotationModel:   "fraud",
+		AnnotationVersion: "v1",
+	}))
+
+	if resp.Allowed {
+		t.Fatalf("quarantined model was admitted because its report is in another namespace: %s",
+			resp.Result.Message)
+	}
+}
+
+// Without a configured report namespace the gate must not start guessing:
+// behaviour stays exactly as before for anyone whose reports are co-located.
+func TestGateWithoutReportNamespaceOnlyChecksTheWorkloadNamespace(t *testing.T) {
+	elsewhere := report("fraud", "v1", func(r *securityv1alpha1.ModelSecurityReport) {
+		r.Namespace = "somewhere-else"
+		r.Status.Verdict = securityv1alpha1.VerdictQuarantined
+	})
+
+	gate := newGate(t, elsewhere) // ReportNamespace deliberately unset
+
+	resp := gate.Handle(context.Background(), deployment(map[string]string{
+		AnnotationModel:   "fraud",
+		AnnotationVersion: "v1",
+	}))
+	if !resp.Allowed {
+		t.Error("gate reached into an unrelated namespace for a report")
+	}
+}
+
+// A report beside the workload still wins, so co-located installs keep working
+// and a team can override the pipeline's verdict location deliberately.
+func TestWorkloadNamespaceReportTakesPrecedence(t *testing.T) {
+	local := report("fraud", "v1", nil) // testNamespace, Approved
+	remote := report("fraud", "v1", func(r *securityv1alpha1.ModelSecurityReport) {
+		r.Namespace = "assay-system"
+		r.Status.Verdict = securityv1alpha1.VerdictQuarantined
+	})
+
+	gate := newGate(t, local, remote)
+	gate.ReportNamespace = "assay-system"
+
+	resp := gate.Handle(context.Background(), deployment(map[string]string{
+		AnnotationModel:   "fraud",
+		AnnotationVersion: "v1",
+	}))
+	if !resp.Allowed {
+		t.Errorf("local approved report was not preferred: %s", resp.Result.Message)
+	}
+}

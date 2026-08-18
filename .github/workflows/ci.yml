@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref; a stale PR build helps nobody.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Verify generated code is current
+        run: |
+          make generate manifests
+          git diff --exit-code api/ config/crd/ config/rbac/
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: |
+          go vet ./...
+          go vet -tags mlflow_live ./internal/modelsource/
+
+      - name: Test
+        run: go test ./... -race -coverprofile=cover.out
+
+      - name: Coverage summary
+        run: go tool cover -func=cover.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62
+
+  mlflow-live:
+    name: MLflow integration (live)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The runner has Docker, so the MLflow source is exercised against a real
+      # tracking server rather than a mock: register a malicious pickle, scan
+      # it, assert Quarantined and the verdict tag written back.
+      - name: Live MLflow scan
+        run: make test-mlflow
+
+  cli-smoke:
+    name: CLI end-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build CLI
+        run: make cli
+
+      # The exit codes are the CLI's contract with CI systems, so assert them
+      # against real artifacts rather than trusting the unit tests alone.
+      - name: Malicious pickle is Quarantined (exit 3)
+        run: |
+          mkdir -p /tmp/evil
+          python3 -c "
+          import pickle, os
+          class E:
+              def __reduce__(self): return (os.system, ('echo pwned',))
+          pickle.dump(E(), open('/tmp/evil/weights.pkl','wb'))
+          "
+          set +e
+          ./bin/assay inspect /tmp/evil
+          code=$?
+          set -e
+          test "$code" = "3" || { echo "expected exit 3, got $code"; exit 1; }
+
+      - name: Clean artifact is Approved (exit 0)
+        run: |
+          mkdir -p /tmp/clean
+          python3 -c "
+          import json, struct
+          h = json.dumps({'__metadata__': {'format': 'pt'}}).encode()
+          open('/tmp/clean/model.safetensors','wb').write(struct.pack('<Q', len(h)) + h)
+          "
+          ./bin/assay inspect /tmp/clean
+
+      - name: JSON output is parseable and carries a verdict
+        run: |
+          ./bin/assay inspect --json /tmp/evil > /tmp/report.json || true
+          python3 -c "
+          import json, sys
+          r = json.load(open('/tmp/report.json'))
+          assert r['verdict'] == 'Quarantined', r['verdict']
+          assert r['riskScore'] > 0, r['riskScore']
+          assert r['findings'], 'no findings'
+          print('verdict', r['verdict'], 'risk', r['riskScore'])
+          "
+
+  image:
+    name: Container image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build operator image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
