@@ -1,4 +1,4 @@
-module github.com/JUMP1ST/assay
+module github.com/DAVANO-INNOVATION-LAB/assay
 
 go 1.25.0
 

@@ -16,8 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
-	"github.com/JUMP1ST/assay/internal/registry"
+	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/registry"
 )
 
 // defaultPollInterval is how often the registry is polled when the connector

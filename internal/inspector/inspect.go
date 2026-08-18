@@ -17,7 +17,7 @@ import (
 	"regexp"
 	"strings"
 
-	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
 )
 
 // Report is the model inspector's output.

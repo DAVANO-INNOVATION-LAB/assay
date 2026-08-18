@@ -14,9 +14,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
-	"github.com/JUMP1ST/assay/internal/controller"
-	assaywebhook "github.com/JUMP1ST/assay/internal/webhook"
+	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/controller"
+	assaywebhook "github.com/DAVANO-INNOVATION-LAB/assay/internal/webhook"
 )
 
 var (

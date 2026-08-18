@@ -26,11 +26,11 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
-	"github.com/JUMP1ST/assay/internal/inspector"
-	"github.com/JUMP1ST/assay/internal/naming"
-	"github.com/JUMP1ST/assay/internal/resolver"
-	"github.com/JUMP1ST/assay/internal/results"
+	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/inspector"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/naming"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/resolver"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/results"
 )
 
 func main() {

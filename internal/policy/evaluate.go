@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
-	"github.com/JUMP1ST/assay/internal/scanners"
+	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/scanners"
 )
 
 // Evaluation is the outcome of applying a policy to a set of scan results.

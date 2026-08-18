@@ -1,7 +1,7 @@
 # Assay — session handoff
 
 Renamed from **Zeus** on 2026-08-11 (Zeus = banking-trojan family). Directory is
-still `~/m-dev/zeus`; module is `github.com/JUMP1ST/assay`; API group is
+still `~/m-dev/zeus`; module is `github.com/DAVANO-INNOVATION-LAB/assay`; API group is
 `security.davano.io` (org-tied on purpose, so a product rename never breaks CRs).
 Org is **Davano**.
 

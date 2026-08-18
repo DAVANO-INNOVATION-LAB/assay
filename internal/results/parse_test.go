@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JUMP1ST/assay/internal/scanners"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/scanners"
 )
 
 func writeFile(t *testing.T, name, content string) string {

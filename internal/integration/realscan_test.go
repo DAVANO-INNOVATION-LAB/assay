@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
-	"github.com/JUMP1ST/assay/internal/policy"
-	"github.com/JUMP1ST/assay/internal/results"
-	"github.com/JUMP1ST/assay/internal/scanners"
+	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/policy"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/results"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/scanners"
 )
 
 // realOutputs are verbatim reports from the scanner images in scanners/,

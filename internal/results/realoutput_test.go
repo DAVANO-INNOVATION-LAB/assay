@@ -3,7 +3,7 @@ package results
 import (
 	"testing"
 
-	"github.com/JUMP1ST/assay/internal/scanners"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/scanners"
 )
 
 // The fixtures in testdata/ are verbatim output from the real scanner images
