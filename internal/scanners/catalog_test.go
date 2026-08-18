@@ -12,7 +12,7 @@ import (
 // agree on that, and nothing at runtime would catch a mismatch — the scanner
 // would just fail inside a Job and the scan would stall.
 func TestExternalScannerArgsMatchTheEntrypointContract(t *testing.T) {
-	for _, name := range Names() {
+	for _, name := range Available() {
 		def, err := Get(name)
 		if err != nil {
 			t.Fatal(err)
@@ -44,7 +44,7 @@ func TestExternalScannerArgsMatchTheEntrypointContract(t *testing.T) {
 // writes would always parse as an empty, clean result — a silent false
 // negative, which is the worst failure a security scanner can have.
 func TestEntrypointScriptsWriteTheDeclaredOutputFile(t *testing.T) {
-	for _, name := range Names() {
+	for _, name := range Available() {
 		def, err := Get(name)
 		if err != nil {
 			t.Fatal(err)
@@ -154,6 +154,44 @@ func TestDefaultScannersCoverTheCoreCategories(t *testing.T) {
 	} {
 		if !covered[required] {
 			t.Errorf("no default scanner covers category %q", required)
+		}
+	}
+}
+
+// The catalog is what validates a policy's scanner list. Entries that have no
+// image built passed that validation and then produced a Job that could only
+// ImagePullBackOff, so the scan hung instead of the policy being rejected.
+func TestUnbuiltScannersAreRejectedNotScheduled(t *testing.T) {
+	var unbuilt []string
+	for _, name := range Names() {
+		if catalog[name].Unbuilt {
+			unbuilt = append(unbuilt, name)
+		}
+	}
+	if len(unbuilt) == 0 {
+		t.Skip("no unbuilt scanners in the catalog")
+	}
+
+	for _, name := range unbuilt {
+		if _, err := Get(name); err == nil {
+			t.Errorf("Get(%q) succeeded for a scanner with no image; a policy naming it would hang a scan", name)
+		}
+	}
+
+	// Available must be the set that can actually run.
+	for _, name := range Available() {
+		if catalog[name].Unbuilt {
+			t.Errorf("Available() returned unbuilt scanner %q", name)
+		}
+		if _, err := Get(name); err != nil {
+			t.Errorf("Available() returned %q but Get rejects it: %v", name, err)
+		}
+	}
+
+	// Defaults must never include something that cannot run.
+	for _, name := range Defaults() {
+		if _, err := Get(name); err != nil {
+			t.Errorf("default scanner %q is not usable: %v", name, err)
 		}
 	}
 }

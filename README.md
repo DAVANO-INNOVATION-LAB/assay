@@ -51,7 +51,7 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Model sources | `internal/modelsource` | `Source` interface (List/Resolve/WriteBack); OpenShift registry + MLflow, MLflow live-tested |
 | Standalone CLI | `cmd/assay` | Working: `assay inspect`, CI exit codes, JSON output |
 | Metrics | `internal/metrics` | Admission decisions, scan verdicts and durations, scanner and sync failures |
-| Artifact resolvers | `internal/resolver` | HTTP run end-to-end; OCI/S3/ODF/ModelCar compile but **untested against real storage**; PVC not yet mounted by the Job builder |
+| Artifact resolvers | `internal/resolver` | HTTP and S3/ODF run end-to-end (S3 live-tested against MinIO); PVC mounted and covered; OCI/ModelCar compile but **untested against a real registry** |
 | Scan orchestrator | `internal/controller` | Working: one Job per scanner |
 | Model inspector | `internal/inspector` | Working: pickle, archive, format analysis |
 | Result parsers | `internal/results` | Validated against real scanner output |
@@ -65,8 +65,17 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 
 The operator builds, the test suite passes, the scanner images build and run,
 and every scanner has been verified against a planted artifact with networking
-disabled. What has not happened yet is a run against a live OpenShift cluster
-with a real Model Registry.
+disabled. CI runs build, vet, lint, the race-enabled unit suite, a CLI
+end-to-end check, and the live MLflow scan on every push. What has not happened
+yet is a run against a live OpenShift cluster with a real Model Registry.
+
+The one image carries all three binaries, so the scanner is usable with no
+cluster at all:
+
+```bash
+docker run --rm --network none -v "$PWD/model:/m:ro" \
+  --entrypoint /assay ghcr.io/davano-innovation-lab/assay/assay-operator:latest inspect /m
+```
 
 ## Scanner images
 
