@@ -59,9 +59,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.62
+      # `make lint` rather than golangci-lint-action: the action downloads a
+      # prebuilt binary, and golangci-lint refuses to run when the Go version
+      # it was built with is older than the one go.mod targets. Installing it
+      # with `go install` builds it against this job's toolchain, so the
+      # version constraint is satisfied by construction — and CI then runs
+      # exactly the command a developer runs locally, from one pinned version
+      # in the Makefile instead of two that can drift.
+      - name: Lint
+        run: make lint
 
   mlflow-live:
     name: MLflow integration (live)
