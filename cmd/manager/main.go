@@ -48,6 +48,7 @@ func main() {
 		jobTTLSeconds        int
 		defaultPolicy        string
 		requireReport        bool
+		reportNamespace      string
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "address the metric endpoint binds to")
@@ -72,6 +73,9 @@ func main() {
 		"policy consulted by the admission gate when a workload names none")
 	flag.BoolVar(&requireReport, "require-report", false,
 		"deny workloads that reference a model with no Assay security report")
+	flag.StringVar(&reportNamespace, "report-namespace", os.Getenv("POD_NAMESPACE"),
+		"namespace the scan pipeline writes reports into; the admission gate searches "+
+			"the workload's namespace first and then this one. Defaults to POD_NAMESPACE")
 
 	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
@@ -141,10 +145,18 @@ func main() {
 	}
 
 	if enableWebhook {
+		if reportNamespace == "" {
+			// Without this the gate only looks in the workload's own namespace,
+			// where reports do not live, and every deployment is admitted as
+			// "unscanned". Better to say so at startup than to gate nothing.
+			setupLog.Info("WARNING: --report-namespace is unset and POD_NAMESPACE is empty; " +
+				"the admission gate will only find reports that share a namespace with the workload")
+		}
 		if err := (&assaywebhook.ModelGate{
-			Client:        mgr.GetClient(),
-			DefaultPolicy: defaultPolicy,
-			RequireReport: requireReport,
+			Client:          mgr.GetClient(),
+			DefaultPolicy:   defaultPolicy,
+			RequireReport:   requireReport,
+			ReportNamespace: reportNamespace,
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to set up admission webhook")
 			os.Exit(1)
@@ -155,7 +167,16 @@ func main() {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	// Readiness has to mean "the webhook is actually serving TLS", not just
+	// "the process is alive". Ping alone passes immediately, so the pod joins
+	// the Service's endpoints before the listener is up; with the webhook's
+	// failurePolicy of Ignore, every admission during that window is admitted
+	// unchecked — a gate that silently opens on each rollout and restart.
+	readyCheck := healthz.Ping
+	if enableWebhook {
+		readyCheck = mgr.GetWebhookServer().StartedChecker()
+	}
+	if err := mgr.AddReadyzCheck("readyz", readyCheck); err != nil {
 		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}

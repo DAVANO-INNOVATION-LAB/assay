@@ -300,7 +300,11 @@ func writeJSON(path string, value any) error {
 	if err != nil {
 		return fmt.Errorf("encode %s: %w", path, err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	// 0644, not 0600: these files are handed between containers in the scan
+	// pod (fetch writes metadata, publish reads it), and a scanner image may
+	// run as a different UID than the runner. The path is an emptyDir private
+	// to the pod, so world-readable inside it is the intent.
+	if err := os.WriteFile(path, data, 0o644); err != nil { //nolint:gosec // G306: shared within the pod's emptyDir by design
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil

@@ -142,7 +142,57 @@ func buildScanJob(scan *securityv1alpha1.ArtifactScan, def scanners.Definition, 
 		{Name: "tmp", MountPath: tmpPath},
 	}
 
-	fetchMounts := mounts
+	// The pod's service account token is projected by hand into the publish
+	// step alone, and automounting is turned off for the pod as a whole.
+	//
+	// Without this the kubelet injects the token into every container,
+	// including the scan step that parses hostile model bytes — which is the
+	// one container that must not hold a credential. That token can create
+	// ArtifactScanReports, so a scanner escape could forge a clean verdict for
+	// any model and walk it straight through the admission gate.
+	//
+	// The projection uses the standard in-cluster paths, so client-go's
+	// ctrl.GetConfig() in the publish step still finds everything it needs.
+	volumes = append(volumes, corev1.Volume{
+		Name: "kube-api-access",
+		VolumeSource: corev1.VolumeSource{
+			Projected: &corev1.ProjectedVolumeSource{
+				Sources: []corev1.VolumeProjection{
+					{
+						ServiceAccountToken: &corev1.ServiceAccountTokenProjection{
+							Path:              "token",
+							ExpirationSeconds: ptr(int64(3600)),
+						},
+					},
+					{
+						ConfigMap: &corev1.ConfigMapProjection{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "kube-root-ca.crt"},
+							Items:                []corev1.KeyToPath{{Key: "ca.crt", Path: "ca.crt"}},
+						},
+					},
+					{
+						DownwardAPI: &corev1.DownwardAPIProjection{
+							Items: []corev1.DownwardAPIVolumeFile{{
+								Path:     "namespace",
+								FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
+							}},
+						},
+					},
+				},
+			},
+		},
+	})
+	publishMounts := append(append([]corev1.VolumeMount{}, mounts...), corev1.VolumeMount{
+		Name:      "kube-api-access",
+		MountPath: "/var/run/secrets/kubernetes.io/serviceaccount",
+		ReadOnly:  true,
+	})
+
+	// fetch gets everything the other steps get, plus whatever the artifact's
+	// scheme and the cluster's registry configuration require. Built as its own
+	// copy and only ever appended to: rebuilding it from `mounts` in a later
+	// branch silently dropped an earlier one.
+	fetchMounts := append([]corev1.VolumeMount{}, mounts...)
 
 	// A pvc:// artifact lives on a claim the fetch step has to be able to read.
 	// The resolver expects it at pvcMountRoot/<claim>, and without this the URI
@@ -158,7 +208,7 @@ func buildScanJob(scan *securityv1alpha1.ArtifactScan, def scanners.Definition, 
 				},
 			},
 		})
-		fetchMounts = append(append([]corev1.VolumeMount{}, fetchMounts...), corev1.VolumeMount{
+		fetchMounts = append(fetchMounts, corev1.VolumeMount{
 			Name:      "artifact-pvc",
 			MountPath: pvcMountRoot + "/" + claim,
 			ReadOnly:  true,
@@ -177,7 +227,7 @@ func buildScanJob(scan *securityv1alpha1.ArtifactScan, def scanners.Definition, 
 				},
 			},
 		})
-		fetchMounts = append(append([]corev1.VolumeMount{}, mounts...),
+		fetchMounts = append(fetchMounts,
 			corev1.VolumeMount{Name: "pull-secret", MountPath: "/docker", ReadOnly: true})
 	}
 
@@ -265,6 +315,8 @@ func buildScanJob(scan *securityv1alpha1.ArtifactScan, def scanners.Definition, 
 				Spec: corev1.PodSpec{
 					RestartPolicy:      corev1.RestartPolicyNever,
 					ServiceAccountName: cfg.ServiceAccount,
+					// Off for the pod; publish mounts the token explicitly.
+					AutomountServiceAccountToken: ptr(false),
 					SecurityContext: &corev1.PodSecurityContext{
 						RunAsNonRoot:   ptr(true),
 						SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
@@ -319,7 +371,7 @@ func buildScanJob(scan *securityv1alpha1.ArtifactScan, def scanners.Definition, 
 								"--results", resultsPath + "/" + def.OutputFile,
 								"--metadata", resultsPath + "/artifact.json",
 							},
-							VolumeMounts:    mounts,
+							VolumeMounts:    publishMounts,
 							SecurityContext: hardened,
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{

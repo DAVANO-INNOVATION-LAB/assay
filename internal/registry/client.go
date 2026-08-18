@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -41,9 +42,17 @@ func New(opts Options) *Client {
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Clone the default transport when it is the stdlib one, but never assume
+	// it: an imported package can replace http.DefaultTransport, and an
+	// unchecked assertion would panic the operator at startup.
+	transport := &http.Transport{}
+	if def, ok := http.DefaultTransport.(*http.Transport); ok {
+		transport = def.Clone()
+	}
 	if opts.InsecureSkipTLSVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		// Opt-in per connector, for registries behind an internal CA that the
+		// operator's trust store does not carry. Off unless a CR asks for it.
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 -- explicit per-connector opt-in
 	}
 	return &Client{
 		baseURL: strings.TrimSuffix(opts.BaseURL, "/"),
@@ -187,25 +196,14 @@ func (e *APIError) Error() string {
 }
 
 // NotFound reports whether the error is a 404 from the registry.
+//
+// errors.As rather than a hand-rolled unwrap loop: the loop missed errors
+// joined with errors.Join or a multi-verb fmt.Errorf, whose Unwrap returns
+// []error. A missed 404 reads as a hard failure and stalls a reconcile.
 func NotFound(err error) bool {
 	var apiErr *APIError
-	if ok := asAPIError(err, &apiErr); ok {
+	if errors.As(err, &apiErr) {
 		return apiErr.Status == http.StatusNotFound
-	}
-	return false
-}
-
-func asAPIError(err error, target **APIError) bool {
-	for err != nil {
-		if e, ok := err.(*APIError); ok {
-			*target = e
-			return true
-		}
-		u, ok := err.(interface{ Unwrap() error })
-		if !ok {
-			return false
-		}
-		err = u.Unwrap()
 	}
 	return false
 }

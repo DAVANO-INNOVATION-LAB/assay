@@ -9,6 +9,9 @@ SCANNER_TAG ?= 0.1.0
 
 LOCALBIN ?= $(shell pwd)/bin
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
+# Keep in step with the version pinned in .github/workflows/ci.yml.
+GOLANGCI_LINT_VERSION ?= v1.62.2
 
 # Stamped into the standalone CLI. Override on release: make cli VERSION=v0.2.0
 VERSION ?= dev
@@ -48,6 +51,17 @@ cover: test ## Show per-package coverage.
 .PHONY: test-mlflow
 test-mlflow: ## Live MLflow integration test (needs Docker + the mlflow image).
 	go test -tags mlflow_live -run TestMLflowLive ./internal/modelsource/ -v
+
+.PHONY: test-s3
+test-s3: ## Live S3 resolver test against MinIO (needs Docker).
+	go test -tags s3_live -run TestS3Live ./internal/resolver/ -v
+
+.PHONY: test-live
+test-live: test-mlflow test-s3 ## Every integration test that needs real services.
+
+.PHONY: lint
+lint: golangci-lint ## Run the linters CI runs.
+	$(GOLANGCI_LINT) run ./...
 
 ##@ Build
 
@@ -118,6 +132,8 @@ uninstall:
 
 .PHONY: deploy
 deploy: install ## Deploy the operator.
+	# Namespace first: everything below is created inside it.
+	kubectl apply -f config/namespace.yaml
 	kubectl apply -f config/rbac
 	kubectl apply -f config/manager
 	kubectl apply -f config/webhook
@@ -127,6 +143,7 @@ undeploy:
 	kubectl delete --ignore-not-found -f config/webhook
 	kubectl delete --ignore-not-found -f config/manager
 	kubectl delete --ignore-not-found -f config/rbac
+	kubectl delete --ignore-not-found -f config/namespace.yaml
 
 ##@ Tools
 
@@ -137,6 +154,11 @@ $(LOCALBIN):
 controller-gen: $(LOCALBIN)
 	@test -x $(CONTROLLER_GEN) || \
 		GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+
+.PHONY: golangci-lint
+golangci-lint: $(LOCALBIN)
+	@test -x $(GOLANGCI_LINT) || \
+		GOBIN=$(LOCALBIN) go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 .PHONY: help
 help:

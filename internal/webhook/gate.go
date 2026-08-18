@@ -42,6 +42,26 @@ type ModelGate struct {
 	// RequireReport rejects workloads that reference a model with no report
 	// at all. When false, unknown models are admitted with a warning.
 	RequireReport bool
+	// ReportNamespace is where the scan pipeline writes its reports — normally
+	// the operator's own namespace.
+	//
+	// A workload and the report about it rarely share a namespace: scans run
+	// where the connector runs, while the InferenceService runs wherever the
+	// serving team works. Looking only in the workload's namespace meant the
+	// gate never found a report, and with RequireReport=false that reads as
+	// "unscanned, admit" — the gate silently passed everything it was
+	// installed to stop.
+	ReportNamespace string
+}
+
+// lookupNamespaces is the order the gate searches for cluster state about a
+// model: alongside the workload first, so a team that keeps reports next to
+// their serving namespace still works, then the pipeline's own namespace.
+func (g *ModelGate) lookupNamespaces(workloadNamespace string) []string {
+	if g.ReportNamespace == "" || g.ReportNamespace == workloadNamespace {
+		return []string{workloadNamespace}
+	}
+	return []string{workloadNamespace, g.ReportNamespace}
 }
 
 // Handle implements admission.Handler.
@@ -67,15 +87,11 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 		return admission.Allowed("no model reference; nothing for assay to validate")
 	}
 
-	report := &securityv1alpha1.ModelSecurityReport{}
-	key := client.ObjectKey{
-		Name:      modelReportName(ref.Model, ref.Version),
-		Namespace: req.Namespace,
+	report, err := g.findReport(ctx, req.Namespace, ref)
+	if err != nil {
+		return admission.Errored(http.StatusInternalServerError, fmt.Errorf("look up security report: %w", err))
 	}
-	if err := g.Client.Get(ctx, key, report); err != nil {
-		if client.IgnoreNotFound(err) != nil {
-			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("look up security report: %w", err))
-		}
+	if report == nil {
 		if g.RequireReport {
 			return admission.Denied(fmt.Sprintf(
 				"model %q version %q has not been scanned by Assay; register it and wait for the scan to complete",
@@ -101,6 +117,24 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 
 	return admission.Allowed(fmt.Sprintf(
 		"assay: model %q version %q approved (risk score %d)", ref.Model, ref.Version, report.Status.RiskScore))
+}
+
+// findReport returns the security report for a model, or nil when none exists.
+// A genuine API error is returned as an error so the caller can fail per the
+// webhook's failurePolicy rather than mistaking an outage for "not scanned".
+func (g *ModelGate) findReport(ctx context.Context, workloadNamespace string, ref ModelRef) (*securityv1alpha1.ModelSecurityReport, error) {
+	name := modelReportName(ref.Model, ref.Version)
+	for _, ns := range g.lookupNamespaces(workloadNamespace) {
+		report := &securityv1alpha1.ModelSecurityReport{}
+		err := g.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, report)
+		if err == nil {
+			return report, nil
+		}
+		if client.IgnoreNotFound(err) != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
 }
 
 type decision struct {
@@ -156,15 +190,20 @@ func (g *ModelGate) enforcementFor(ctx context.Context, namespace string, annota
 		return "Enforce"
 	}
 
-	var pol securityv1alpha1.ArtifactScanPolicy
-	if err := g.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &pol); err != nil {
-		// A missing policy must not weaken the gate.
-		return "Enforce"
+	// Policies live beside the scans that use them, which is usually not the
+	// workload's namespace — same split as the reports themselves.
+	for _, ns := range g.lookupNamespaces(namespace) {
+		var pol securityv1alpha1.ArtifactScanPolicy
+		if err := g.Client.Get(ctx, client.ObjectKey{Name: name, Namespace: ns}, &pol); err != nil {
+			continue
+		}
+		if pol.Spec.Enforcement == "" {
+			return "Enforce"
+		}
+		return pol.Spec.Enforcement
 	}
-	if pol.Spec.Enforcement == "" {
-		return "Enforce"
-	}
-	return pol.Spec.Enforcement
+	// A missing policy must not weaken the gate.
+	return "Enforce"
 }
 
 // InjectDecoder satisfies controller-runtime's decoder injection.

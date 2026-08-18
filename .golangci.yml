@@ -1,0 +1,42 @@
+# Linters are chosen to catch real defects in an operator that handles
+# untrusted bytes, not to enforce style debates.
+run:
+  timeout: 5m
+  build-tags:
+    - mlflow_live
+
+linters:
+  enable:
+    - errcheck      # an unchecked error in a scan step silently loses findings
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose     # leaked HTTP bodies in the registry/MLflow clients
+    - errorlint     # %w wrapping, so NotFound checks keep working
+    - misspell
+    - unconvert
+    - gosec
+
+linters-settings:
+  gosec:
+    excludes:
+      # G107: URLs come from CR spec fields by design (that is the product).
+      - G107
+      # G304: file paths are the artifact being scanned; traversal is checked
+      # explicitly by safeJoin and the inspector's own path guards.
+      - G304
+      # G115: every hit is int32(len(...)) or a count widened for a CRD status
+      # field, where the API type is int32. A registry holding 2^31 models is
+      # not a threat model. Genuine narrowing conversions are reviewed by hand.
+      - G115
+  errcheck:
+    check-type-assertions: true
+
+issues:
+  exclude-rules:
+    # Test fixtures intentionally ignore write errors and use weak inputs.
+    - path: _test\.go
+      linters: [errcheck, gosec]
+  max-issues-per-linter: 0
+  max-same-issues: 0
