@@ -33,6 +33,26 @@ type ArtifactScanSpec struct {
 	// Scanners overrides the policy's scanner set when non-empty.
 	// +optional
 	Scanners []string `json:"scanners,omitempty"`
+
+	// Trigger records why this scan exists. Without it every scan looks the
+	// same afterwards, and "was this model checked when it was registered, or
+	// only when someone tried to deploy it, or has it been rechecked since"
+	// becomes unanswerable — which is most of what an auditor asks.
+	//
+	//	Registry  a model source published a version
+	//	Runtime   a workload tried to deploy it
+	//	Periodic  a scheduled recheck, e.g. after a CVE database refresh
+	//	Manual    a person asked for it
+	//	Pipeline  CI asked for it
+	//
+	// +kubebuilder:validation:Enum=Registry;Runtime;Periodic;Manual;Pipeline
+	// +optional
+	Trigger string `json:"trigger,omitempty"`
+
+	// TriggeredBy identifies what caused it: a connector name, a workload, or
+	// a username. Paired with Trigger it answers "who asked, and why".
+	// +optional
+	TriggeredBy string `json:"triggeredBy,omitempty"`
 }
 
 // ArtifactScanStatus tracks scan execution and outcome.

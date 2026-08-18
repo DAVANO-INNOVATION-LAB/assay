@@ -27,6 +27,10 @@ type Report struct {
 	FilesScanned int `json:"filesScanned"`
 	// Formats lists the model formats detected in the artifact.
 	Formats []string `json:"formats,omitempty"`
+	// Truncated records that the file cap was reached, so some of the artifact
+	// was never examined. A clean report over a truncated walk is not a clean
+	// artifact, and the difference has to survive into the verdict.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // Limits bound the inspector's work so a hostile artifact cannot exhaust the
@@ -64,12 +68,13 @@ func Inspect(root string, limits Limits) (*Report, error) {
 	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			// A single unreadable file must not abort the whole scan.
-			report.Findings = append(report.Findings, finding(
-				"ASSAY-IO-001", "Unreadable file", "Low", relPath(root, path),
+			report.Findings = append(report.Findings, unreadable(
+				"ASSAY-IO-001", "Unreadable file", relPath(root, path),
 				fmt.Sprintf("could not read file: %v", err)))
 			return nil
 		}
 		if report.FilesScanned >= limits.MaxFiles {
+			report.Truncated = true
 			return filepath.SkipDir
 		}
 		if info.IsDir() {
@@ -108,8 +113,8 @@ func Inspect(root string, limits Limits) (*Report, error) {
 
 		findings, err := inspectFile(path, rel, limits)
 		if err != nil {
-			report.Findings = append(report.Findings, finding(
-				"ASSAY-IO-002", "Inspection error", "Low", rel, err.Error()))
+			report.Findings = append(report.Findings, unreadable(
+				"ASSAY-IO-002", "Inspection error", rel, err.Error()))
 			return nil
 		}
 		report.Findings = append(report.Findings, findings...)
@@ -117,6 +122,14 @@ func Inspect(root string, limits Limits) (*Report, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("walk artifact: %w", err)
+	}
+
+	if report.Truncated {
+		report.Findings = append(report.Findings, finding(
+			"ASSAY-COVERAGE-001", "Artifact was only partially examined", "High", "",
+			fmt.Sprintf("the inspector stopped after %d files; anything beyond that was never "+
+				"read. A verdict over a partial scan says nothing about the part that was "+
+				"skipped.", limits.MaxFiles)))
 	}
 
 	for f := range formats {
@@ -790,6 +803,37 @@ func isEscapingLink(root, linkPath, target string) bool {
 	}
 	resolved := filepath.Clean(filepath.Join(filepath.Dir(linkPath), target))
 	return !strings.HasPrefix(resolved, filepath.Clean(root)+string(filepath.Separator))
+}
+
+// executesOnLoad reports whether loading this file can run code.
+//
+// This drives the severity of a coverage gap. A file we could not read is a
+// footnote when it is a README and a serious problem when it is a pickle: the
+// whole point of MITRE ATLAS technique AML.T0076 ("Corrupt AI Model") is to
+// make an artifact un-parseable so a scanner skips it while it still executes
+// on load. A scanner that reports every parse failure at the same low severity
+// is defeated by that technique, because the policy engine approves the result.
+func executesOnLoad(rel string) bool {
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".pkl", ".pickle", ".joblib", ".dill",
+		".pt", ".pth", ".ckpt", ".bin",
+		".h5", ".keras", ".pb",
+		".npy", ".npz", ".msgpack", ".model":
+		return true
+	}
+	return false
+}
+
+// unreadable builds the finding for a file that could not be examined,
+// escalating when the file is one that executes code on load.
+func unreadable(id, title, rel, detail string) securityv1alpha1.Finding {
+	if executesOnLoad(rel) {
+		return finding(id, title+" in an executable model format", "High", rel,
+			detail+"; this format executes code when the model is loaded, so an artifact that "+
+				"cannot be examined cannot be cleared. Deliberately corrupting a file to defeat "+
+				"a scanner is a known technique (MITRE ATLAS AML.T0076).")
+	}
+	return finding(id, title, "Low", rel, detail)
 }
 
 func formatOf(rel string) string {

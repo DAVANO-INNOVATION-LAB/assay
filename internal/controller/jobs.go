@@ -41,7 +41,10 @@ const (
 	LabelScan      = "security.davano.io/scan"
 	LabelScanner   = "security.davano.io/scanner"
 	LabelManagedBy = "app.kubernetes.io/managed-by"
-	ManagerName    = "assay-operator"
+	// LabelTrigger records why a scan exists, so the console and kubectl can
+	// filter on it without parsing the spec.
+	LabelTrigger = "security.davano.io/trigger"
+	ManagerName  = "assay-operator"
 
 	// AnnotationArtifactDigest carries the digest the fetch step measured,
 	// from the scan report the publish step writes back up to the model
@@ -236,6 +239,25 @@ func buildScanJob(scan *securityv1alpha1.ArtifactScan, def scanners.Definition, 
 			corev1.VolumeMount{Name: "pull-secret", MountPath: "/docker", ReadOnly: true})
 	}
 
+	// The provenance scanner needs public trust material. It is optional: a
+	// cluster with no TrustedPublishers must still be able to run every other
+	// scanner, and the verifier reports the missing configuration itself.
+	scanMounts := append([]corev1.VolumeMount{}, mounts...)
+	if def.Category == scanners.CategoryProvenance {
+		volumes = append(volumes, corev1.Volume{
+			Name: "trust-policy",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: TrustPolicyConfigMap},
+					Optional:             ptr(true),
+				},
+			},
+		})
+		scanMounts = append(scanMounts, corev1.VolumeMount{
+			Name: "trust-policy", MountPath: TrustPolicyMountPath, ReadOnly: true,
+		})
+	}
+
 	fetchEnv := []corev1.EnvVar{{Name: "DOCKER_CONFIG", Value: "/docker"}}
 	if cfg.StorageSecret != "" {
 		fetchEnv = append(fetchEnv, corev1.EnvVar{
@@ -357,7 +379,7 @@ func buildScanJob(scan *securityv1alpha1.ArtifactScan, def scanners.Definition, 
 							Image:           image,
 							Command:         command,
 							Args:            args,
-							VolumeMounts:    mounts,
+							VolumeMounts:    scanMounts,
 							SecurityContext: hardened,
 							Resources:       scanResources,
 						},
@@ -405,7 +427,9 @@ func substitutePaths(args []string) []string {
 	out := make([]string, len(args))
 	for i, arg := range args {
 		arg = strings.ReplaceAll(arg, scanners.PlaceholderWorkspace, workspacePath)
-		out[i] = strings.ReplaceAll(arg, scanners.PlaceholderResults, resultsPath)
+		arg = strings.ReplaceAll(arg, scanners.PlaceholderResults, resultsPath)
+		out[i] = strings.ReplaceAll(arg, scanners.PlaceholderTrustPolicy,
+			TrustPolicyMountPath+"/"+TrustPolicyKey)
 	}
 	return out
 }

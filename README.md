@@ -85,6 +85,23 @@ docker run --rm --network none -v "$PWD/model:/m:ro" \
   --entrypoint /assay <your-namespace>/assay-operator:0.1.0 inspect /m
 ```
 
+## The console
+
+A single self-contained page showing every model's posture, the findings behind
+each verdict, and how each scan was triggered — registry, runtime, periodic or
+manual. See [docs/console.md](docs/console.md) for a walkthrough with
+screenshots.
+
+![Assay console](docs/images/console-scan.png)
+
+```bash
+kubectl proxy --port=8903 --www=./ui --www-prefix=/ui/   # http://localhost:8903/ui/
+```
+
+Note how it is served: `kubectl proxy` carries the privileges of whoever ran
+it. `internal/api` provides OIDC login, roles and finding-level redaction for
+shared clusters; wiring the console to it is in progress.
+
 ## Scanner images
 
 Each scanner ships as its own image under `scanners/`. They all expose the

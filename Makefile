@@ -175,11 +175,14 @@ kustomize-build: manifests ## Render the Kustomize overlays.
 
 .PHONY: install
 install: manifests ## Install CRDs into the cluster.
-	kubectl apply -f config/crd/bases
+	@# Applied through kustomize rather than as a directory: config/crd/bases
+	@# also holds a kustomization.yaml for the Kustomize path, and
+	@# `kubectl apply -f <dir>` tries to apply that as a resource and fails.
+	kubectl apply -k config/crd/bases
 
 .PHONY: uninstall
 uninstall:
-	kubectl delete --ignore-not-found -f config/crd/bases
+	kubectl delete --ignore-not-found -k config/crd/bases
 
 .PHONY: deploy
 deploy: install ## Deploy the operator.

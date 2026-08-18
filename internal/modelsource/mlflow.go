@@ -118,7 +118,11 @@ func (m *MLflow) List(ctx context.Context) ([]Version, error) {
 				Version:   mv.Version,
 				VersionID: mv.Version, // MLflow keys write-back on (name, version)
 				Artifact: securityv1alpha1.ArtifactRef{
-					URI:    mv.Source,
+					// MLflow reports "mlflow-artifacts:/..." — a path inside a
+					// server it does not name. The scan pod receives only the
+					// URI, so rewrite it to carry the tracking host and stay
+					// resolvable away from this process.
+					URI:    m.resolvableURI(mv.Source),
 					Format: "", // MLflow does not declare a serialization format
 				},
 				Labels: map[string]string{
@@ -129,6 +133,14 @@ func (m *MLflow) List(ctx context.Context) ([]Version, error) {
 		}
 	}
 	return versions, nil
+}
+
+// resolvableURI makes an artifact location meaningful outside this process.
+func (m *MLflow) resolvableURI(source string) string {
+	if rewritten, ok := resolver.RewriteMLflowURI(source, m.baseURL); ok {
+		return rewritten
+	}
+	return source
 }
 
 func (m *MLflow) searchRegisteredModels(ctx context.Context) ([]mlflowRegisteredModel, error) {

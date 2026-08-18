@@ -28,8 +28,10 @@ import (
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/controller"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/evidence"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/inspector"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/naming"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/provenance"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/resolver"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/results"
 )
@@ -53,6 +55,8 @@ func main() {
 		err = runPublish(ctx, os.Args[2:])
 	case "verify-provenance":
 		err = runVerifyProvenance(os.Args[2:])
+	case "verify-evidence":
+		err = runVerifyEvidence(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -76,6 +80,9 @@ Usage:
   assay-runner inspect --workspace DIR --out FILE
   assay-runner publish --scan NAME --namespace NS --scanner NAME --format FMT --results FILE [--metadata FILE]
   assay-runner verify-provenance --workspace DIR --out FILE
+  assay-runner verify-evidence FILE
+
+verify-evidence exit codes: 0 the bundle is intact, 4 it is not, 1 it could not be read.
 `)
 }
 
@@ -152,34 +159,108 @@ func runInspect(args []string) error {
 	return writeJSON(*out, report)
 }
 
-// runVerifyProvenance is the provenance scanner's entry point. Signature
-// verification against TrustedPublishers is Phase 2; the step currently
-// records that no verified attestation was found so policies requiring one
-// fail closed rather than passing by omission.
+// runVerifyProvenance is the provenance scanner's entry point.
+//
+// The trust policy arrives as a file rather than over the API, because this
+// step runs in a pod with no cluster credentials — only the publish step ever
+// holds those. The controller renders the TrustedPublishers into a ConfigMap
+// and projects it here read-only.
 func runVerifyProvenance(args []string) error {
 	fs := flag.NewFlagSet("verify-provenance", flag.ExitOnError)
 	workspace := fs.String("workspace", "/workspace", "staged artifact directory")
 	out := fs.String("out", "", "write the findings report here")
+	policyPath := fs.String("trust-policy", "", "trust policy JSON rendered from TrustedPublishers")
+	metadataPath := fs.String("metadata", "", "artifact metadata written by the fetch step")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *out == "" {
 		return fmt.Errorf("--out is required")
 	}
-	_ = workspace
 
-	report := struct {
-		Findings []securityv1alpha1.Finding `json:"findings"`
-	}{
-		Findings: []securityv1alpha1.Finding{{
-			ID:          "ASSAY-PROV-001",
-			Title:       "No verified signature",
+	policy, err := loadTrustPolicy(*policyPath)
+	if err != nil {
+		return err
+	}
+
+	// The URI scopes which publishers may sign this artifact. Without it a
+	// signature valid for one repository would admit an artifact from
+	// anywhere, so a missing metadata file must not silently widen trust.
+	artifactURI := ""
+	if *metadataPath != "" {
+		if meta, err := readArtifactMetadata(*metadataPath); err == nil {
+			artifactURI = meta.URI
+		}
+	}
+
+	verifier, err := provenance.NewVerifier(policy)
+	if err != nil {
+		// A bad trust root is a cluster configuration fault. Record it as a
+		// finding rather than failing the Job, so the scan still produces a
+		// report saying why provenance could not be established.
+		return writeJSON(*out, provenanceReport{Findings: []securityv1alpha1.Finding{{
+			ID:          provenance.FindingNotConfigured,
+			Title:       "Trust root could not be loaded",
 			Severity:    "Medium",
 			Category:    "provenance",
-			Description: "cosign verification against TrustedPublishers is not yet implemented; treat provenance as unverified",
-		}},
+			Description: err.Error(),
+		}}})
+	}
+
+	result, err := verifier.Verify(*workspace, artifactURI)
+	if err != nil {
+		return err
+	}
+
+	report := provenanceReport{Findings: make([]securityv1alpha1.Finding, 0, len(result.Findings))}
+	for _, f := range result.Findings {
+		report.Findings = append(report.Findings, securityv1alpha1.Finding{
+			ID:          f.ID,
+			Title:       f.Title,
+			Severity:    f.Severity,
+			Category:    f.Category,
+			Location:    f.Location,
+			Description: f.Description,
+		})
 	}
 	return writeJSON(*out, report)
+}
+
+type provenanceReport struct {
+	Findings []securityv1alpha1.Finding `json:"findings"`
+}
+
+// loadTrustPolicy reads the rendered trust policy. A missing file is not an
+// error: it means the cluster has not configured provenance, which the verifier
+// reports as its own finding rather than treating as a scan failure.
+func loadTrustPolicy(path string) (provenance.Policy, error) {
+	if path == "" {
+		return provenance.Policy{}, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return provenance.Policy{}, nil
+		}
+		return provenance.Policy{}, fmt.Errorf("read trust policy: %w", err)
+	}
+	var policy provenance.Policy
+	if err := json.Unmarshal(raw, &policy); err != nil {
+		return provenance.Policy{}, fmt.Errorf("parse trust policy: %w", err)
+	}
+	return policy, nil
+}
+
+func readArtifactMetadata(path string) (*artifactMetadata, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var meta artifactMetadata
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return nil, err
+	}
+	return &meta, nil
 }
 
 func runPublish(ctx context.Context, args []string) error {
@@ -312,4 +393,78 @@ func writeJSON(path string, value any) error {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil
+}
+
+// runVerifyEvidence checks an evidence bundle offline.
+//
+// Offline is the requirement, not a convenience: a bundle is handed to an
+// authorizing official who may have no access to the cluster that produced it,
+// and frequently no network at all. Everything needed to check it is inside
+// the file.
+func runVerifyEvidence(args []string) error {
+	fs := flag.NewFlagSet("verify-evidence", flag.ExitOnError)
+	asJSON := fs.Bool("json", false, "emit the verification result as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() < 1 {
+		return fmt.Errorf("an evidence bundle file is required")
+	}
+
+	raw, err := os.ReadFile(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+	var bundle evidence.Bundle
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		return fmt.Errorf("parse evidence bundle: %w", err)
+	}
+
+	result, err := evidence.Verify(&bundle)
+	if err != nil {
+		return err
+	}
+
+	if *asJSON {
+		encoded, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(encoded))
+	} else {
+		fmt.Printf("subject:   %s/%s\n", bundle.Subject.Model, bundle.Subject.Version)
+		fmt.Printf("verdict:   %s (risk %d)\n", bundle.Verdict.Decision, bundle.Verdict.RiskScore)
+		fmt.Printf("produced:  %s by %s\n", bundle.GeneratedAt.Format(time.RFC3339), bundle.Producer)
+		fmt.Printf("digest:    %s\n", statusWord(result.DigestMatches, "unmodified", "MODIFIED"))
+		fmt.Printf("audit:     %s\n", statusWord(result.ChainValid, "intact", "BROKEN"))
+		fmt.Printf("coverage:  %d of %d scanners completed\n",
+			bundle.Coverage.ScannersCompleted, bundle.Coverage.ScannersRequested)
+
+		if len(result.Problems) > 0 {
+			fmt.Println("\nproblems:")
+			for _, p := range result.Problems {
+				fmt.Printf("  - %s\n", p)
+			}
+		}
+		if len(bundle.Coverage.OutOfScope) > 0 {
+			fmt.Println("\nnot assessed by this tool:")
+			for _, o := range bundle.Coverage.OutOfScope {
+				fmt.Printf("  - %s\n", o)
+			}
+		}
+	}
+
+	// A distinct exit code so a pipeline can tell a failed check from a failed
+	// run: an unreadable file exits 1, a bundle that does not verify exits 4.
+	if !result.Valid {
+		os.Exit(4)
+	}
+	return nil
+}
+
+func statusWord(ok bool, yes, no string) string {
+	if ok {
+		return yes
+	}
+	return no
 }

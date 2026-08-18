@@ -7,6 +7,29 @@ import (
 // ModelRegistryConnectorSpec defines a connection to an OpenShift AI
 // (Kubeflow) Model Registry instance to watch for models to scan.
 type ModelRegistryConnectorSpec struct {
+	// Type selects the registry implementation behind this connector. Both
+	// are driven through the same ModelSource interface, so registry
+	// scanning is one pipeline with several front doors rather than a
+	// separate integration per vendor.
+	//
+	//	KubeflowModelRegistry  the OpenShift AI / Kubeflow Model Registry
+	//	MLflow                 an MLflow tracking server's model registry
+	//
+	// +kubebuilder:validation:Enum=KubeflowModelRegistry;MLflow
+	// +kubebuilder:default=KubeflowModelRegistry
+	// +optional
+	Type string `json:"type,omitempty"`
+
+	// RescanInterval re-scans a version this long after its last scan.
+	//
+	// A verdict is a statement about what was known when the scan ran. CVE
+	// databases move, so an artifact that passed last quarter has not been
+	// vouched for today — but nothing rescanned, so every verdict aged
+	// silently and a stale pass looked identical to a fresh one. Zero keeps
+	// the old behaviour of scanning each version exactly once.
+	// +optional
+	RescanInterval *metav1.Duration `json:"rescanInterval,omitempty"`
+
 	// RegistryURL is the base URL of the Model Registry REST API,
 	// e.g. https://model-registry.rhoai-model-registries.svc:8080
 	RegistryURL string `json:"registryURL"`

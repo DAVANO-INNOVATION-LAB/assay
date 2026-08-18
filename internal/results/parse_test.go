@@ -3,6 +3,7 @@ package results
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/scanners"
@@ -262,6 +263,43 @@ func TestSeverityNormalization(t *testing.T) {
 	for input, want := range cases {
 		if got := normalizeSeverity(input); got != want {
 			t.Errorf("normalizeSeverity(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestParseDocketDriftFindings(t *testing.T) {
+	raw := []byte(`[
+	  {"id":"DOCKET-DRIFT-002","title":"Declared precision does not match the tensors",
+	   "severity":"High","declared":"bfloat16","measured":"F8_E4M3",
+	   "detail":"config.json declares bfloat16 while the tensors report F8_E4M3"}
+	]`)
+	got, err := parseDocket(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Findings) != 1 {
+		t.Fatalf("want 1 finding, got %d", len(got.Findings))
+	}
+	f := got.Findings[0]
+	if f.ID != "DOCKET-DRIFT-002" || f.Severity != "High" {
+		t.Fatalf("unexpected finding: %+v", f)
+	}
+	// Both sides of the comparison must survive into the description, or a
+	// reader cannot tell what disagreed with what.
+	if !strings.Contains(f.Description, "bfloat16") || !strings.Contains(f.Description, "F8_E4M3") {
+		t.Fatalf("the description should carry both values, got %q", f.Description)
+	}
+}
+
+// No discrepancies is a result. It must not read as a scanner failure.
+func TestParseDocketEmptyIsClean(t *testing.T) {
+	for _, body := range []string{"", "null", "[]"} {
+		got, err := parseDocket([]byte(body))
+		if err != nil {
+			t.Fatalf("%q should parse cleanly: %v", body, err)
+		}
+		if len(got.Findings) != 0 {
+			t.Fatalf("%q should yield no findings", body)
 		}
 	}
 }

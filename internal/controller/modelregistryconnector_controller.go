@@ -8,12 +8,10 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
@@ -100,63 +98,25 @@ func (r *ModelRegistryConnectorReconciler) Reconcile(ctx context.Context, req ct
 		return r.degrade(ctx, &connector, "AuthSecretUnavailable", err.Error(), interval)
 	}
 
-	newClient := r.NewClient
-	if newClient == nil {
-		newClient = func(opts registry.Options) RegistryClient { return registry.New(opts) }
-	}
-	rc := newClient(registry.Options{
-		BaseURL:               connector.Spec.RegistryURL,
-		Token:                 token,
-		InsecureSkipTLSVerify: connector.Spec.InsecureSkipTLSVerify,
-	})
-
-	if err := rc.Ping(ctx); err != nil {
-		return r.degrade(ctx, &connector, "RegistryUnreachable", err.Error(), interval)
+	src, err := r.sourceFor(&connector, token)
+	if err != nil {
+		return r.degrade(ctx, &connector, "UnknownConnectorType", err.Error(), interval)
 	}
 
-	models, err := rc.ListRegisteredModels(ctx)
+	versionCount, scansCreated, syncFailures, err := r.syncSource(ctx, &connector, src)
 	if err != nil {
 		return r.degrade(ctx, &connector, "ListModelsFailed", err.Error(), interval)
 	}
-
-	var (
-		versionCount int32
-		scansCreated int32
-		syncFailures int
-	)
-
-	for _, model := range models {
-		if !matchesIncludeList(model.Name, connector.Spec.IncludeModels) {
-			continue
-		}
-
-		versions, err := rc.ListModelVersions(ctx, model.ID)
-		if err != nil {
-			logger.Error(err, "list model versions", "model", model.Name)
-			syncFailures++
-			metrics.SourceSyncFailures.WithLabelValues("model-registry", "list_versions").Inc()
-			continue
-		}
-		versionCount += int32(len(versions))
-
-		for _, version := range versions {
-			created, err := r.syncVersion(ctx, &connector, rc, model, version)
-			if err != nil {
-				logger.Error(err, "sync model version", "model", model.Name, "version", version.Name)
-				syncFailures++
-				metrics.SourceSyncFailures.WithLabelValues("model-registry", "sync_version").Inc()
-				continue
-			}
-			scansCreated += created
-		}
+	if scansCreated > 0 {
+		logger.Info("created scans from a model source",
+			"connector", connector.Name, "source", src.Name(), "scans", scansCreated)
 	}
 
 	now := metav1.Now()
 	connector.Status.LastSyncTime = &now
-	connector.Status.RegisteredModels = int32(len(models))
-	connector.Status.ModelVersions = versionCount
-	connector.Status.ScansCreated += scansCreated
-	metrics.ModelsTracked.WithLabelValues("model-registry", connector.Name).Set(float64(versionCount))
+	connector.Status.ModelVersions = int32(versionCount)
+	connector.Status.ScansCreated += int32(scansCreated)
+	metrics.ModelsTracked.WithLabelValues(src.Name(), connector.Name).Set(float64(versionCount))
 
 	// Per-model failures were logged and swallowed, so a connector where every
 	// single model failed still reported Connected and Ready — a completely
@@ -178,7 +138,7 @@ func (r *ModelRegistryConnectorReconciler) Reconcile(ctx context.Context, req ct
 			Type:    "Ready",
 			Status:  metav1.ConditionTrue,
 			Reason:  "SyncSucceeded",
-			Message: fmt.Sprintf("synced %d models, %d versions", len(models), versionCount),
+			Message: fmt.Sprintf("synced %d model version(s) from %s", versionCount, src.Name()),
 		})
 	}
 	if err := r.Status().Update(ctx, &connector); err != nil {
@@ -189,125 +149,6 @@ func (r *ModelRegistryConnectorReconciler) Reconcile(ctx context.Context, req ct
 		logger.Info("created scans from registry", "connector", connector.Name, "scans", scansCreated)
 	}
 	return ctrl.Result{RequeueAfter: interval}, nil
-}
-
-// syncVersion ensures an ArtifactScan exists for each artifact of a model
-// version, and pushes any completed verdict back into the registry.
-func (r *ModelRegistryConnectorReconciler) syncVersion(
-	ctx context.Context,
-	connector *securityv1alpha1.ModelRegistryConnector,
-	rc RegistryClient,
-	model registry.RegisteredModel,
-	version registry.ModelVersion,
-) (int32, error) {
-	artifacts, err := rc.ListArtifacts(ctx, version.ID)
-	if err != nil {
-		return 0, fmt.Errorf("list artifacts for version %s: %w", version.Name, err)
-	}
-
-	var created int32
-	for _, artifact := range artifacts {
-		uri := normalizeArtifactURI(artifact)
-		if uri == "" {
-			// An artifact with no resolvable location cannot be scanned;
-			// skip rather than creating a scan that will always fail.
-			continue
-		}
-
-		scanName := scanNameFor(model.Name, version.Name, artifact.ID)
-		var existing securityv1alpha1.ArtifactScan
-		err := r.Get(ctx, client.ObjectKey{Name: scanName, Namespace: connector.Namespace}, &existing)
-		if err == nil {
-			continue
-		}
-		if !apierrors.IsNotFound(err) {
-			return created, fmt.Errorf("check scan %s: %w", scanName, err)
-		}
-
-		scan := &securityv1alpha1.ArtifactScan{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      scanName,
-				Namespace: connector.Namespace,
-				Labels: map[string]string{
-					LabelConnector:             connector.Name,
-					LabelManagedBy:             ManagerName,
-					"security.davano.io/model": sanitizeLabel(model.Name),
-				},
-				Annotations: map[string]string{
-					AnnotationRegistryModelID:   model.ID,
-					AnnotationRegistryVersionID: version.ID,
-					AnnotationArtifactID:        artifact.ID,
-				},
-			},
-			Spec: securityv1alpha1.ArtifactScanSpec{
-				ModelName:         model.Name,
-				ModelVersion:      version.Name,
-				RegistryModelID:   model.ID,
-				RegistryVersionID: version.ID,
-				ConnectorRef:      connector.Name,
-				PolicyRef:         connector.Spec.PolicyRef,
-				Artifact: securityv1alpha1.ArtifactRef{
-					URI:    uri,
-					Format: artifact.ModelFormatName,
-				},
-			},
-		}
-		if err := controllerutil.SetControllerReference(connector, scan, r.Scheme); err != nil {
-			return created, fmt.Errorf("set owner on scan: %w", err)
-		}
-		if err := r.Create(ctx, scan); err != nil {
-			if apierrors.IsAlreadyExists(err) {
-				continue
-			}
-			return created, fmt.Errorf("create scan %s: %w", scanName, err)
-		}
-		created++
-	}
-
-	if err := r.writeBack(ctx, connector, rc, model, version); err != nil {
-		return created, err
-	}
-	return created, nil
-}
-
-// writeBack pushes the model version's security summary into the registry as
-// custom properties, so users see the verdict without leaving the registry UI.
-func (r *ModelRegistryConnectorReconciler) writeBack(
-	ctx context.Context,
-	connector *securityv1alpha1.ModelRegistryConnector,
-	rc RegistryClient,
-	model registry.RegisteredModel,
-	version registry.ModelVersion,
-) error {
-	if connector.Spec.WriteBack != nil && !*connector.Spec.WriteBack {
-		return nil
-	}
-
-	var report securityv1alpha1.ModelSecurityReport
-	key := client.ObjectKey{Name: modelReportName(model.Name, version.Name), Namespace: connector.Namespace}
-	if err := r.Get(ctx, key, &report); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil // not scanned yet
-		}
-		return fmt.Errorf("get model security report: %w", err)
-	}
-	if report.Status.LastScanTime == nil {
-		return nil
-	}
-
-	// Skip the PATCH when the registry already carries this verdict, so a
-	// steady-state poll does not write on every interval.
-	if current, ok := version.CustomProperties[registry.PropLastScan]; ok {
-		if current.StringValue == report.Status.LastScanTime.UTC().Format(time.RFC3339) {
-			return nil
-		}
-	}
-
-	props := registry.SummaryProperties(&report)
-	if err := rc.PatchModelVersionProperties(ctx, version.ID, props); err != nil {
-		return fmt.Errorf("write security metadata to registry: %w", err)
-	}
-	return nil
 }
 
 func (r *ModelRegistryConnectorReconciler) resolveToken(ctx context.Context, connector *securityv1alpha1.ModelRegistryConnector) (string, error) {

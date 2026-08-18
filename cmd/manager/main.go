@@ -37,21 +37,23 @@ func init() {
 
 func main() {
 	var (
-		metricsAddr          string
-		probeAddr            string
-		enableLeaderElection bool
-		enableWebhook        bool
-		operatorImage        string
-		scannerRegistry      string
-		scanServiceAccount   string
-		pullSecret           string
-		storageSecret        string
-		workspaceSize        string
-		jobTTLSeconds        int
-		defaultPolicy        string
-		requireReport        bool
-		reportNamespace      string
-		scanDeadlineMinutes  int
+		trustRootPath          string
+		requireTransparencyLog bool
+		metricsAddr            string
+		probeAddr              string
+		enableLeaderElection   bool
+		enableWebhook          bool
+		operatorImage          string
+		scannerRegistry        string
+		scanServiceAccount     string
+		pullSecret             string
+		storageSecret          string
+		workspaceSize          string
+		jobTTLSeconds          int
+		defaultPolicy          string
+		requireReport          bool
+		reportNamespace        string
+		scanDeadlineMinutes    int
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "address the metric endpoint binds to")
@@ -79,6 +81,11 @@ func main() {
 	flag.IntVar(&scanDeadlineMinutes, "scan-deadline-minutes", 120,
 		"fail a scan that has not reached a verdict within this many minutes; "+
 			"without it a scan whose report never lands retries forever")
+	flag.StringVar(&trustRootPath, "trust-root", os.Getenv("ASSAY_TRUST_ROOT"),
+		"path to a Sigstore trusted-root JSON file for signature verification; "+
+			"left empty, provenance reports that it cannot verify rather than fetching one over the network")
+	flag.BoolVar(&requireTransparencyLog, "require-transparency-log", false,
+		"demand an auditable transparency-log entry, not just a valid signature")
 	flag.StringVar(&reportNamespace, "report-namespace", os.Getenv("POD_NAMESPACE"),
 		"namespace the scan pipeline writes reports into; the admission gate searches "+
 			"the workload's namespace first and then this one. Defaults to POD_NAMESPACE")
@@ -138,10 +145,12 @@ func main() {
 	}
 
 	if err := (&controller.ArtifactScanReconciler{
-		Client:       mgr.GetClient(),
-		Scheme:       mgr.GetScheme(),
-		JobConfig:    jobConfig,
-		ScanDeadline: time.Duration(scanDeadlineMinutes) * time.Minute,
+		Client:                 mgr.GetClient(),
+		Scheme:                 mgr.GetScheme(),
+		JobConfig:              jobConfig,
+		ScanDeadline:           time.Duration(scanDeadlineMinutes) * time.Minute,
+		TrustRootPath:          trustRootPath,
+		RequireTransparencyLog: requireTransparencyLog,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ArtifactScan")
 		os.Exit(1)
