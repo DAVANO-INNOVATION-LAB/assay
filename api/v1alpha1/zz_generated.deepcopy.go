@@ -81,6 +81,15 @@ func (in *ArtifactExceptionSpec) DeepCopyInto(out *ArtifactExceptionSpec) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.ApprovedByGroups != nil {
+		in, out := &in.ApprovedByGroups, &out.ApprovedByGroups
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
+	if in.ApprovedAt != nil {
+		in, out := &in.ApprovedAt, &out.ApprovedAt
+		*out = (*in).DeepCopy()
+	}
 	if in.ExpiresAt != nil {
 		in, out := &in.ExpiresAt, &out.ExpiresAt
 		*out = (*in).DeepCopy()

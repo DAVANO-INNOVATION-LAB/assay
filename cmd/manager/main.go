@@ -175,6 +175,13 @@ func main() {
 			setupLog.Error(err, "unable to set up admission webhook")
 			os.Exit(1)
 		}
+		// Signs risk acceptances with the authenticated identity of whoever
+		// created them, so a waiver records who actually accepted it rather
+		// than whichever name they typed.
+		if err := (&assaywebhook.ExceptionSigner{}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to set up exception signer")
+			os.Exit(1)
+		}
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

@@ -63,3 +63,36 @@ webhooks:
         operations: ["CREATE"]
         resources: ["pods"]
         scope: Namespaced
+---
+# Signs risk acceptances. An ArtifactException is the one place a human
+# overrides the scanner, so it is the record that has to survive an argument
+# later: who accepted this, when, on what grounds. The webhook takes the
+# identity from the authenticated request and overwrites whatever the object
+# claimed, because a name a user can type is not a signature.
+#
+# failurePolicy is Fail, unlike the deployment gate: if the signer is down the
+# correct outcome is that no waiver is recorded, not that unsigned ones are.
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: assay-exception-signer
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+webhooks:
+  - name: exceptions.security.davano.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    timeoutSeconds: 10
+    clientConfig:
+      service:
+        name: assay-webhook-service
+        namespace: assay-system
+        path: /sign-exception
+        port: 443
+    rules:
+      - apiGroups: ["security.davano.io"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["artifactexceptions"]
+        scope: Namespaced
