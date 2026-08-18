@@ -60,6 +60,13 @@ type Definition struct {
 	NeedsNetwork bool
 	// DefaultEnabled marks scanners that run when a policy lists no scanners.
 	DefaultEnabled bool
+	// Unbuilt marks a catalog entry that has no image in scanners/ yet.
+	//
+	// The catalog is what validates a policy's scanner list, so an entry with
+	// no image passed validation and then produced a Job that could only
+	// ImagePullBackOff — a scan that hangs rather than a policy that is
+	// rejected. Naming one of these is now an error at the point of use.
+	Unbuilt bool
 }
 
 // Placeholders substituted into scanner arguments when a Job is built.
@@ -102,6 +109,8 @@ var catalog = map[string]Definition{
 		Args:         []string{PlaceholderWorkspace, PlaceholderResults + "/yara.json"},
 		OutputFile:   "yara.json",
 		ResultFormat: FormatAssay,
+		// No image is built for this yet; see scanners/.
+		Unbuilt: true,
 	},
 	"trivy": {
 		Name:         "trivy",
@@ -169,6 +178,8 @@ var catalog = map[string]Definition{
 		Args:         []string{PlaceholderWorkspace, PlaceholderResults + "/license.json"},
 		OutputFile:   "license.json",
 		ResultFormat: FormatAssay,
+		// No image is built for this yet; see scanners/.
+		Unbuilt: true,
 	},
 	"ai-safety": {
 		Name:         "ai-safety",
@@ -177,6 +188,8 @@ var catalog = map[string]Definition{
 		Args:         []string{PlaceholderWorkspace, PlaceholderResults + "/ai-safety.json"},
 		OutputFile:   "ai-safety.json",
 		ResultFormat: FormatAssay,
+		// No image is built for this yet; see scanners/.
+		Unbuilt: true,
 	},
 }
 
@@ -202,7 +215,28 @@ func Get(name string) (Definition, error) {
 	if !ok {
 		return Definition{}, fmt.Errorf("unknown scanner %q; known scanners: %v", name, Names())
 	}
+	if def.Unbuilt {
+		// Failing here turns a scan that would sit in ImagePullBackOff until
+		// its deadline into a policy that is rejected up front, with a reason.
+		return Definition{}, fmt.Errorf(
+			"scanner %q is declared in the catalog but has no image built yet; "+
+				"remove it from the policy (available: %v)", name, Available())
+	}
 	return def, nil
+}
+
+// Available returns the scanners that actually have an image, sorted. This is
+// the set a policy may name.
+func Available() []string {
+	names := make([]string, 0, len(catalog))
+	for name, def := range catalog {
+		if def.Unbuilt {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // Names returns every scanner name in the catalog, sorted.
