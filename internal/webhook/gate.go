@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -18,6 +19,7 @@ import (
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/controller"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/metrics"
 )
 
 // Annotations a workload uses to declare which model it serves. KServe
@@ -66,19 +68,29 @@ func (g *ModelGate) lookupNamespaces(workloadNamespace string) []string {
 
 // Handle implements admission.Handler.
 func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission.Response {
+	start := time.Now()
+	outcome := metrics.OutcomeAllowed
+	defer func() {
+		metrics.AdmissionDuration.Observe(time.Since(start).Seconds())
+		metrics.AdmissionDecisions.WithLabelValues(outcome, req.Namespace).Inc()
+	}()
+
 	if req.Operation == admissionv1.Delete {
 		return admission.Allowed("")
 	}
 
 	obj := &unstructured.Unstructured{}
 	if err := json.Unmarshal(req.Object.Raw, obj); err != nil {
+		outcome = metrics.OutcomeError
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("decode object: %w", err))
 	}
 
 	annotations := obj.GetAnnotations()
 	if strings.EqualFold(annotations[AnnotationSkip], "true") {
 		// Opting out is recorded in the response so it shows up in the audit
-		// log rather than passing silently.
+		// log, and counted so a cluster quietly annotating its way around the
+		// gate is visible on a dashboard rather than only in the audit trail.
+		outcome = metrics.OutcomeAllowedSkipped
 		return admission.Allowed("assay validation explicitly skipped by annotation")
 	}
 
@@ -89,14 +101,20 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 
 	report, err := g.findReport(ctx, req.Namespace, ref)
 	if err != nil {
+		outcome = metrics.OutcomeError
 		return admission.Errored(http.StatusInternalServerError, fmt.Errorf("look up security report: %w", err))
 	}
 	if report == nil {
 		if g.RequireReport {
+			outcome = metrics.OutcomeDenied
 			return admission.Denied(fmt.Sprintf(
 				"model %q version %q has not been scanned by Assay; register it and wait for the scan to complete",
 				ref.Model, ref.Version))
 		}
+		// Admitted only because Assay knows nothing about this model. Counted
+		// separately from a real approval: the two are opposite facts that look
+		// identical from outside.
+		outcome = metrics.OutcomeAllowedNoScan
 		return admission.Allowed(fmt.Sprintf("no Assay security report for model %q version %q", ref.Model, ref.Version))
 	}
 
@@ -105,12 +123,15 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 	if decision := g.evaluate(report, ref); decision.deny {
 		switch enforcement {
 		case "Audit":
+			outcome = metrics.OutcomeAllowedAudit
 			return admission.Allowed("assay: " + decision.reason + " (audit mode)")
 		case "Warn":
+			outcome = metrics.OutcomeAllowedWarn
 			resp := admission.Allowed("assay: admitted with warnings")
 			resp.Warnings = append(resp.Warnings, "assay: "+decision.reason)
 			return resp
 		default:
+			outcome = metrics.OutcomeDenied
 			return admission.Denied("assay: " + decision.reason)
 		}
 	}

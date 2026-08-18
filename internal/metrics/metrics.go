@@ -1,0 +1,115 @@
+// Package metrics defines Assay's Prometheus metrics.
+//
+// The question an operator most needs answered about a security gate is not
+// "is it up" but "what did it let through, and why". A gate that fails open —
+// as this one does by default, with failurePolicy: Ignore and
+// --require-report=false — is indistinguishable from a working gate unless the
+// admissions it waved through are counted. Everything here exists to make that
+// visible.
+package metrics
+
+import (
+	"github.com/prometheus/client_golang/prometheus"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
+)
+
+// Admission decision outcomes.
+const (
+	OutcomeAllowed        = "allowed"
+	OutcomeDenied         = "denied"
+	OutcomeAllowedNoScan  = "allowed_unscanned"
+	OutcomeAllowedAudit   = "allowed_audit"
+	OutcomeAllowedWarn    = "allowed_warn"
+	OutcomeAllowedSkipped = "allowed_skip_annotation"
+	OutcomeError          = "error"
+)
+
+var (
+	// AdmissionDecisions counts what the gate did, by outcome.
+	//
+	// allowed_unscanned is the number that matters: it is how often a workload
+	// was admitted purely because Assay had nothing to say about it. A rising
+	// value means coverage is incomplete, not that models are safe.
+	AdmissionDecisions = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "assay_admission_decisions_total",
+			Help: "Admission decisions by outcome. allowed_unscanned counts workloads admitted because no security report existed.",
+		},
+		[]string{"outcome", "namespace"},
+	)
+
+	// AdmissionDuration tracks how long the gate takes to decide. The webhook
+	// has a 10s API-server timeout, past which the failurePolicy decides —
+	// so latency here is a correctness concern, not just a performance one.
+	AdmissionDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "assay_admission_duration_seconds",
+			Help:    "Time spent evaluating an admission request.",
+			Buckets: []float64{.001, .005, .01, .05, .1, .5, 1, 2.5, 5, 10},
+		},
+	)
+
+	// ScanVerdicts counts completed scans by the verdict they reached.
+	ScanVerdicts = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "assay_scan_verdicts_total",
+			Help: "Completed scans by verdict.",
+		},
+		[]string{"verdict"},
+	)
+
+	// ScanDuration measures a scan from creation to verdict. The buckets run
+	// long because a large artifact over a slow link legitimately takes tens
+	// of minutes.
+	ScanDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "assay_scan_duration_seconds",
+			Help:    "Time from ArtifactScan creation to a final verdict.",
+			Buckets: prometheus.ExponentialBuckets(10, 2, 10),
+		},
+	)
+
+	// ScannerResults counts individual scanner outcomes, so a scanner that is
+	// silently erroring on every artifact is visible before its absence gets
+	// mistaken for a clean bill of health.
+	ScannerResults = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "assay_scanner_results_total",
+			Help: "Scanner completions by scanner and status.",
+		},
+		[]string{"scanner", "status"},
+	)
+
+	// SourceSyncFailures counts failed polls of a model source, labelled by
+	// the source and a coarse reason.
+	SourceSyncFailures = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "assay_source_sync_failures_total",
+			Help: "Failed model-source syncs by source and reason.",
+		},
+		[]string{"source", "reason"},
+	)
+
+	// ModelsTracked is the number of model versions a source last reported.
+	ModelsTracked = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "assay_models_tracked",
+			Help: "Model versions discovered by a source at its last successful sync.",
+		},
+		[]string{"source", "connector"},
+	)
+)
+
+// Register adds every Assay metric to the controller-runtime registry, which
+// is what the manager already serves on its metrics endpoint.
+func Register() {
+	metrics.Registry.MustRegister(
+		AdmissionDecisions,
+		AdmissionDuration,
+		ScanVerdicts,
+		ScanDuration,
+		ScannerResults,
+		SourceSyncFailures,
+		ModelsTracked,
+	)
+}

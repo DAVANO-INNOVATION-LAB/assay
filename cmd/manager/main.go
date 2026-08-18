@@ -5,6 +5,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -16,6 +17,7 @@ import (
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/controller"
+	assaymetrics "github.com/DAVANO-INNOVATION-LAB/assay/internal/metrics"
 	assaywebhook "github.com/DAVANO-INNOVATION-LAB/assay/internal/webhook"
 )
 
@@ -49,6 +51,7 @@ func main() {
 		defaultPolicy        string
 		requireReport        bool
 		reportNamespace      string
+		scanDeadlineMinutes  int
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "address the metric endpoint binds to")
@@ -73,6 +76,9 @@ func main() {
 		"policy consulted by the admission gate when a workload names none")
 	flag.BoolVar(&requireReport, "require-report", false,
 		"deny workloads that reference a model with no Assay security report")
+	flag.IntVar(&scanDeadlineMinutes, "scan-deadline-minutes", 120,
+		"fail a scan that has not reached a verdict within this many minutes; "+
+			"without it a scan whose report never lands retries forever")
 	flag.StringVar(&reportNamespace, "report-namespace", os.Getenv("POD_NAMESPACE"),
 		"namespace the scan pipeline writes reports into; the admission gate searches "+
 			"the workload's namespace first and then this one. Defaults to POD_NAMESPACE")
@@ -82,6 +88,10 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	// Registered before the manager starts so the endpoint never serves a
+	// partial metric set.
+	assaymetrics.Register()
 
 	if operatorImage == "" {
 		setupLog.Error(nil, "operator image is required; set --operator-image or ASSAY_OPERATOR_IMAGE")
@@ -125,9 +135,10 @@ func main() {
 	}
 
 	if err := (&controller.ArtifactScanReconciler{
-		Client:    mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		JobConfig: jobConfig,
+		Client:       mgr.GetClient(),
+		Scheme:       mgr.GetScheme(),
+		JobConfig:    jobConfig,
+		ScanDeadline: time.Duration(scanDeadlineMinutes) * time.Minute,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ArtifactScan")
 		os.Exit(1)
