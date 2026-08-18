@@ -1,0 +1,35 @@
+# The default Kustomize build: everything needed for a working install, in the
+# order it has to be applied. This is the kubebuilder-native path; `helm` is the
+# packaged path. They deploy the same thing.
+#
+#   kubectl apply -k config/default
+#
+# Note the OpenShift assumption: config/webhook uses service-CA annotations for
+# the serving certificate. On a cluster without the service CA operator, use the
+# Helm chart with webhook.certMode=cert-manager — there is no Kustomize overlay
+# for cert-manager because the caBundle injection differs per issuer.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: assay-system
+
+resources:
+  - ../namespace
+  - ../crd/bases
+  - ../rbac
+  - ../manager
+  - ../webhook
+
+# includeSelectors is false on purpose: adding labels to a Deployment's
+# selector would make it immutable-incompatible with the existing install.
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/name: assay-model-scanner
+      app.kubernetes.io/part-of: assay
+
+# One place to retag. The Deployment's ASSAY_OPERATOR_IMAGE env must match, and
+# it is patched in the overlays rather than here so the base stays literal.
+images:
+  - name: quay.io/davano/assay-operator
+    newTag: 0.1.0

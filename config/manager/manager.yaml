@@ -136,4 +136,3 @@ spec:
             # Populated by the OpenShift service CA operator via the
             # service.beta.openshift.io/serving-cert-secret-name annotation.
             secretName: assay-webhook-server-cert
-      terminationGracePeriodSeconds: 10

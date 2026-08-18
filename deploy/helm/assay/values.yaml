@@ -1,0 +1,149 @@
+# Default values for Assay.
+
+image:
+  repository: quay.io/davano/assay-operator
+  tag: ""          # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# Two replicas because both serve the admission webhook; see podDisruptionBudget.
+replicaCount: 2
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # The operator's own identity.
+  name: assay-controller-manager
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+nodeSelector: {}
+tolerations: []
+# An admission webhook that gets preempted takes model deployment with it,
+# because the gate then fails open.
+priorityClassName: system-cluster-critical
+
+podAnnotations: {}
+podLabels: {}
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# ---------------------------------------------------------------------------
+# Operator behaviour
+# ---------------------------------------------------------------------------
+operator:
+  leaderElect: true
+  logLevel: info               # zap: debug | info | error
+
+  # Deny workloads referencing a model with no security report. The permissive
+  # default means installing Assay cannot break a running cluster — but it also
+  # means the gate admits anything it has not scanned. Watch
+  # assay_admission_decisions_total{outcome="allowed_unscanned"} before flipping
+  # this, and see the alerts in metrics.prometheusRule.
+  requireReport: false
+
+  # Policy the gate consults when a workload names none.
+  defaultPolicy: ""
+
+  # Registry holding the scanner images. Point at a mirror for a disconnected
+  # cluster; the scanner images carry their own databases, so scans need no
+  # egress.
+  scannerRegistry: quay.io/davano
+
+  # Fail a scan that has not reached a verdict in this long. Without it, a scan
+  # whose report never lands retries forever.
+  scanDeadlineMinutes: 120
+
+  # Seconds to retain completed scan Jobs.
+  jobTTLSeconds: 3600
+
+  # Size limit for the scan workspace volume.
+  workspaceSize: 50Gi
+
+  # Optional Secret names, resolved in the namespace the scan runs in.
+  pullSecret: ""      # dockerconfigjson, for OCI artifact pulls
+  storageSecret: ""   # S3/ODF credentials for artifact fetches
+
+# ---------------------------------------------------------------------------
+# Scan identity
+# ---------------------------------------------------------------------------
+scanner:
+  serviceAccountName: assay-scanner
+
+  # Scan Jobs are created in the namespace of the ArtifactScan, and the scan
+  # ServiceAccount must exist there or the pod is unschedulable. List every
+  # namespace you will create scans in; the release namespace is always
+  # included.
+  additionalNamespaces: []
+
+# ---------------------------------------------------------------------------
+# Admission webhook
+# ---------------------------------------------------------------------------
+webhook:
+  enabled: true
+
+  # How the serving certificate is provisioned. This is the setting that
+  # decides whether Assay can run on your cluster at all:
+  #
+  #   openshift    - the service CA operator issues and rotates it, and injects
+  #                  the CA bundle. No extra dependency, OpenShift only.
+  #   cert-manager - a Certificate/Issuer pair is created and the CA bundle is
+  #                  injected by cert-manager's ca-injector. Requires
+  #                  cert-manager with the CA injector enabled.
+  #   external     - you provide the Secret and the caBundle yourself.
+  #
+  # There is no self-signed fallback on purpose: a webhook whose certificate
+  # cannot be verified is silently skipped under failurePolicy Ignore, which
+  # looks exactly like a working gate.
+  certMode: openshift
+
+  certSecretName: assay-webhook-server-cert
+
+  # Only used when certMode is external.
+  caBundle: ""
+
+  certManager:
+    # Uses a self-signed Issuer by default. Point at your own with issuerRef.
+    issuerRef: {}
+    duration: 8760h    # 1y
+    renewBefore: 720h  # 30d
+
+  # Ignore keeps an Assay outage from blocking every model deployment. Fail is
+  # the stronger setting: Ignore means anyone who can disrupt Assay can also
+  # bypass the gate.
+  failurePolicy: Ignore
+  timeoutSeconds: 10
+
+  # Only namespaces carrying this label are gated. Assay never gates itself.
+  namespaceSelector:
+    matchExpressions:
+      - key: security.davano.io/enforce
+        operator: In
+        values: ["true"]
+
+# ---------------------------------------------------------------------------
+# Observability
+# ---------------------------------------------------------------------------
+metrics:
+  enabled: true
+  port: 8080
+  service:
+    enabled: true
+  # Both need the Prometheus Operator CRDs.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+  prometheusRule:
+    enabled: false
+    labels: {}

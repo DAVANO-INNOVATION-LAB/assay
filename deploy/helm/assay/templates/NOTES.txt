@@ -1,0 +1,46 @@
+Assay {{ .Chart.AppVersion }} installed into namespace {{ .Release.Namespace }}.
+
+Webhook certificates: {{ .Values.webhook.certMode }}
+{{- if eq .Values.webhook.certMode "openshift" }}
+  The OpenShift service CA operator issues and rotates the serving cert. On a
+  cluster without it the Secret is never created and the pod will sit in
+  ContainerCreating — use --set webhook.certMode=cert-manager there.
+{{- else if eq .Values.webhook.certMode "cert-manager" }}
+  cert-manager issues the cert and injects the CA bundle. If the pod stays in
+  ContainerCreating, cert-manager is not running or its CA injector is disabled.
+{{- else }}
+  You are supplying the cert and CA bundle. Assay does not verify either.
+{{- end }}
+
+{{ if .Values.operator.requireReport -}}
+ENFORCING: workloads referencing an unscanned model are DENIED.
+{{- else -}}
+PERMISSIVE: workloads referencing an unscanned model are ADMITTED.
+
+  This is the default so that installing Assay cannot break a running cluster.
+  It also means the gate currently admits anything it has not scanned, which
+  from the outside is indistinguishable from a gate that is working. Before
+  turning it on, watch:
+
+    assay_admission_decisions_total{outcome="allowed_unscanned"}
+
+  and drive it to zero. Then: --set operator.requireReport=true
+{{- end }}
+
+Gate a namespace (nothing is gated until you do):
+
+  kubectl label namespace <ns> security.davano.io/enforce=true
+
+Scans created outside {{ .Release.Namespace }} need the scan identity present in
+their own namespace, or their pods are never admitted:
+
+  --set scanner.additionalNamespaces="{ns-a,ns-b}"
+
+Check it came up:
+
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "assay.fullname" . }}
+
+CRDs were installed from the chart's crds/ directory. Helm does not upgrade or
+delete those on `helm upgrade`/`helm uninstall` — apply CRD changes yourself:
+
+  kubectl apply -f https://raw.githubusercontent.com/DAVANO-INNOVATION-LAB/assay/main/config/crd/bases

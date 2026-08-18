@@ -1,0 +1,109 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "assay.webhookServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "assay.labels" . | nindent 4 }}
+  {{- if eq .Values.webhook.certMode "openshift" }}
+  annotations:
+    # OpenShift's service CA operator issues and rotates the serving cert,
+    # which avoids a hard dependency on cert-manager.
+    service.beta.openshift.io/serving-cert-secret-name: {{ .Values.webhook.certSecretName }}
+  {{- end }}
+spec:
+  selector:
+    {{- include "assay.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: webhook
+      port: 443
+      targetPort: 9443
+      protocol: TCP
+
+{{- if eq .Values.webhook.certMode "cert-manager" }}
+---
+{{- if not .Values.webhook.certManager.issuerRef }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "assay.fullname" . }}-selfsign
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "assay.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "assay.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "assay.labels" . | nindent 4 }}
+spec:
+  secretName: {{ .Values.webhook.certSecretName }}
+  duration: {{ .Values.webhook.certManager.duration }}
+  renewBefore: {{ .Values.webhook.certManager.renewBefore }}
+  dnsNames:
+    - {{ include "assay.webhookServiceName" . }}.{{ .Release.Namespace }}.svc
+    - {{ include "assay.webhookServiceName" . }}.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    {{- if .Values.webhook.certManager.issuerRef }}
+    {{- toYaml .Values.webhook.certManager.issuerRef | nindent 4 }}
+    {{- else }}
+    kind: Issuer
+    name: {{ include "assay.fullname" . }}-selfsign
+    {{- end }}
+{{- end }}
+---
+# Cluster-scoped and fixed-name: one gate per cluster.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: assay-model-deployment-gate
+  labels:
+    {{- include "assay.labels" . | nindent 4 }}
+  annotations:
+    {{- if eq .Values.webhook.certMode "openshift" }}
+    # Injects the service CA bundle so the API server trusts the webhook.
+    service.beta.openshift.io/inject-cabundle: "true"
+    {{- else if eq .Values.webhook.certMode "cert-manager" }}
+    # cert-manager's CA injector fills in caBundle from the Certificate.
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "assay.fullname" . }}-webhook
+    {{- end }}
+webhooks:
+  - name: models.security.davano.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+    clientConfig:
+      service:
+        name: {{ include "assay.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /validate-model-deployment
+        port: 443
+      {{- if eq .Values.webhook.certMode "external" }}
+      caBundle: {{ .Values.webhook.caBundle }}
+      {{- end }}
+    namespaceSelector:
+      {{- toYaml .Values.webhook.namespaceSelector | nindent 6 }}
+    rules:
+      - apiGroups: ["serving.kserve.io"]
+        apiVersions: ["v1beta1", "v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["inferenceservices"]
+        scope: Namespaced
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+        scope: Namespaced
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+        scope: Namespaced
+{{- end }}
