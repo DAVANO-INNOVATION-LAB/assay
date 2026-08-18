@@ -67,8 +67,15 @@ func (r *ArtifactScanReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	// A finished scan is not immutable. Accepting a risk creates an
+	// ArtifactException, and if a terminal phase simply returned here, that
+	// acceptance would change nothing: the verdict would stay Quarantined
+	// forever and the button that recorded it would look broken, because it
+	// would be. Re-evaluating is cheap — the policy engine is pure, the scan
+	// results are already on the object — so a finished scan re-derives its
+	// verdict against the exceptions that exist now.
 	if scan.Status.Phase == "Completed" || scan.Status.Phase == "Failed" {
-		return ctrl.Result{}, nil
+		return r.reevaluate(ctx, &scan)
 	}
 
 	pol, err := r.loadPolicy(ctx, &scan)
@@ -168,6 +175,50 @@ func (r *ArtifactScanReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
+// reevaluate re-derives the verdict of an already-finished scan against the
+// exceptions and policy in force now. It writes only when something actually
+// changed, so a steady-state reconcile is a no-op rather than a write loop.
+func (r *ArtifactScanReconciler) reevaluate(ctx context.Context, scan *securityv1alpha1.ArtifactScan) (ctrl.Result, error) {
+	if len(scan.Status.Results) == 0 {
+		return ctrl.Result{}, nil
+	}
+	pol, err := r.loadPolicy(ctx, scan)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	exceptions, err := r.loadExceptions(ctx, scan)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	eval := policy.Evaluate(scan.Status.Results, scan.Spec.Artifact, pol, exceptions, time.Now())
+	if eval.Verdict == scan.Status.Verdict &&
+		scan.Status.RiskScore != nil && *scan.Status.RiskScore == eval.RiskScore {
+		return ctrl.Result{}, nil
+	}
+
+	previous := scan.Status.Verdict
+	scan.Status.Verdict = eval.Verdict
+	scan.Status.RiskScore = &eval.RiskScore
+	scan.Status.Message = summarize(eval)
+	if len(eval.Waived) > 0 {
+		// Say plainly that the verdict moved because a human accepted the
+		// risk, not because the artifact changed.
+		scan.Status.Message = fmt.Sprintf("%s (%d violation(s) waived by exception)",
+			scan.Status.Message, len(eval.Waived))
+	}
+	if err := r.Status().Update(ctx, scan); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.upsertModelSecurityReport(ctx, scan, eval); err != nil {
+		return ctrl.Result{}, err
+	}
+	log.FromContext(ctx).Info("verdict re-evaluated after an exception changed",
+		"scan", scan.Name, "from", previous, "to", eval.Verdict, "waived", len(eval.Waived))
+	metrics.ScanVerdicts.WithLabelValues(eval.Verdict).Inc()
+	return ctrl.Result{}, nil
+}
+
 func (r *ArtifactScanReconciler) loadPolicy(ctx context.Context, scan *securityv1alpha1.ArtifactScan) (*securityv1alpha1.ArtifactScanPolicy, error) {
 	if scan.Spec.PolicyRef == "" {
 		return nil, nil
@@ -181,6 +232,28 @@ func (r *ArtifactScanReconciler) loadPolicy(ctx context.Context, scan *securityv
 		return nil, fmt.Errorf("load policy %q: %w", scan.Spec.PolicyRef, err)
 	}
 	return &pol, nil
+}
+
+// mapExceptionToScans finds the scans an exception applies to. An exception
+// names a model and version rather than a scan, so the lookup is by spec.
+func (r *ArtifactScanReconciler) mapExceptionToScans(ctx context.Context, obj client.Object) []reconcile.Request {
+	ex, ok := obj.(*securityv1alpha1.ArtifactException)
+	if !ok {
+		return nil
+	}
+	var scans securityv1alpha1.ArtifactScanList
+	if err := r.List(ctx, &scans, client.InNamespace(ex.Namespace)); err != nil {
+		return nil
+	}
+	var out []reconcile.Request
+	for _, s := range scans.Items {
+		if s.Spec.ModelName == ex.Spec.ModelName && s.Spec.ModelVersion == ex.Spec.ModelVersion {
+			out = append(out, reconcile.Request{
+				NamespacedName: client.ObjectKey{Name: s.Name, Namespace: s.Namespace},
+			})
+		}
+	}
+	return out
 }
 
 func (r *ArtifactScanReconciler) loadExceptions(ctx context.Context, scan *securityv1alpha1.ArtifactScan) ([]securityv1alpha1.ArtifactException, error) {
@@ -490,6 +563,12 @@ func (r *ArtifactScanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(
 			&securityv1alpha1.ArtifactScanReport{},
 			handler.EnqueueRequestsFromMapFunc(mapReportToScan),
+		).
+		// Without this an accepted risk would sit in the cluster changing
+		// nothing, because the scan it applies to has already finished.
+		Watches(
+			&securityv1alpha1.ArtifactException{},
+			handler.EnqueueRequestsFromMapFunc(r.mapExceptionToScans),
 		).
 		Named("artifactscan").
 		Complete(r)

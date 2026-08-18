@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -258,5 +259,105 @@ func TestScanReportsAreAdoptedByTheirScan(t *testing.T) {
 	}
 	if !metav1.IsControlledBy(&got, scan) {
 		t.Errorf("report has no controller reference to its scan; owners = %+v", got.OwnerReferences)
+	}
+}
+
+// Accepting a risk has to actually change the verdict. It did not: a finished
+// scan returned immediately on its terminal phase, so an ArtifactException sat
+// in the cluster affecting nothing and the button that created it looked
+// broken — because it was. This pins the disposition end to end.
+func TestAcceptingRiskClearsTheVerdict(t *testing.T) {
+	const ns = "assay-system"
+
+	risk := int32(60)
+	scan := &securityv1alpha1.ArtifactScan{
+		ObjectMeta: metav1.ObjectMeta{Name: "scan-quarantined", Namespace: ns},
+		Spec: securityv1alpha1.ArtifactScanSpec{
+			ModelName: "fraud", ModelVersion: "v1",
+			Artifact: securityv1alpha1.ArtifactRef{URI: "s3://models/fraud/v1"},
+		},
+		Status: securityv1alpha1.ArtifactScanStatus{
+			Phase:     "Completed",
+			Verdict:   securityv1alpha1.VerdictQuarantined,
+			RiskScore: &risk,
+			// A critical model finding is what quarantined it.
+			Results: []securityv1alpha1.ScannerResult{{
+				Scanner: "model-inspector", Status: "Failed", Findings: 1,
+				Severities: securityv1alpha1.SeverityCounts{Critical: 1},
+			}},
+		},
+	}
+
+	c := fake.NewClientBuilder().
+		WithScheme(digestTestScheme(t)).
+		WithObjects(scan).
+		WithStatusSubresource(
+			&securityv1alpha1.ArtifactScan{},
+			&securityv1alpha1.ModelSecurityReport{},
+		).
+		Build()
+	r := &ArtifactScanReconciler{Client: c, Scheme: digestTestScheme(t)}
+	key := client.ObjectKey{Name: "scan-quarantined", Namespace: ns}
+	ctx := context.Background()
+
+	// Without an exception the verdict must stand.
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key}); err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	var before securityv1alpha1.ArtifactScan
+	if err := c.Get(ctx, key, &before); err != nil {
+		t.Fatal(err)
+	}
+	if before.Status.Verdict != securityv1alpha1.VerdictQuarantined {
+		t.Fatalf("verdict changed with no exception: %s", before.Status.Verdict)
+	}
+
+	// A security engineer accepts the risk.
+	if err := c.Create(ctx, &securityv1alpha1.ArtifactException{
+		ObjectMeta: metav1.ObjectMeta{Name: "accept-fraud-v1", Namespace: ns},
+		Spec: securityv1alpha1.ArtifactExceptionSpec{
+			ModelName: "fraud", ModelVersion: "v1",
+			Rules:      []string{policy.RuleBlockUnsafeModel},
+			Reason:     "reviewed with the vendor; the pickle is a documented loader shim",
+			ApprovedBy: "alice@corp.example",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The exception has to map back to this scan, or nothing wakes it up.
+	reqs := r.mapExceptionToScans(ctx, &securityv1alpha1.ArtifactException{
+		ObjectMeta: metav1.ObjectMeta{Namespace: ns},
+		Spec: securityv1alpha1.ArtifactExceptionSpec{
+			ModelName: "fraud", ModelVersion: "v1",
+		},
+	})
+	if len(reqs) != 1 || reqs[0].Name != "scan-quarantined" {
+		t.Fatalf("exception mapped to %v, want the quarantined scan", reqs)
+	}
+
+	if _, err := r.Reconcile(ctx, ctrl.Request{NamespacedName: key}); err != nil {
+		t.Fatalf("Reconcile after exception: %v", err)
+	}
+
+	var after securityv1alpha1.ArtifactScan
+	if err := c.Get(ctx, key, &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.Status.Verdict == securityv1alpha1.VerdictQuarantined {
+		t.Error("accepting the risk left the model quarantined; the button does nothing")
+	}
+	if !strings.Contains(after.Status.Message, "waived") {
+		t.Errorf("status does not say the verdict moved because of a waiver: %q", after.Status.Message)
+	}
+
+	// The model report the gate reads has to move too, or the deployment is
+	// still blocked no matter what the console shows.
+	var report securityv1alpha1.ModelSecurityReport
+	if err := c.Get(ctx, client.ObjectKey{Name: ModelReportName("fraud", "v1"), Namespace: ns}, &report); err != nil {
+		t.Fatalf("model report was not written: %v", err)
+	}
+	if report.Status.Verdict == securityv1alpha1.VerdictQuarantined {
+		t.Error("the model report the admission gate reads still says Quarantined")
 	}
 }
