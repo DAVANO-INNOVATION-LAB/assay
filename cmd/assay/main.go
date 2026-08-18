@@ -12,17 +12,29 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"sort"
+	"strings"
+	"syscall"
 	"time"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/inspector"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/policy"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/resolver"
 )
+
+// isURI distinguishes a remote artifact from a local path. A Windows drive
+// letter is not a scheme, so require more than one character before "://".
+func isURI(s string) bool {
+	i := strings.Index(s, "://")
+	return i > 1
+}
 
 // version is stamped by the linker: -ldflags "-X main.version=v0.2.0".
 var version = "dev"
@@ -58,12 +70,27 @@ func usage() {
 	fmt.Fprint(os.Stderr, `assay - supply-chain scanner for ML model artifacts
 
 Usage:
-  assay inspect <path> [--json] [--max-files N]
+  assay inspect <path|uri> [--json] [--max-files N]
   assay version
 
-assay inspect scans a model file or directory for the ways a model artifact
-can execute code: unsafe serialization (pickle and friends), archive escapes,
-executable payloads, and configs that hand execution to model-supplied code.
+assay inspect scans a model for the ways an artifact can execute code: unsafe
+serialization (pickle and friends), archive escapes, executable payloads, and
+configs that hand execution to model-supplied code.
+
+<path|uri> is a local file or directory, or a remote artifact:
+
+  hf://owner/name            Hugging Face, pinned to the current commit
+  hf://owner/name@revision   a branch, tag or commit
+  https://huggingface.co/... the URL as pasted from a browser
+  s3://bucket/prefix         object storage (also ODF and MinIO)
+  oci://registry/repo:tag    an OCI registry
+  pvc://claim/path           a PersistentVolumeClaim, in-cluster
+
+A remote model is staged to a temporary directory and removed afterwards. Very
+large tensor files are sampled at their header rather than downloaded whole —
+safetensors cannot execute code, so the header is the whole attack surface —
+and anything not read in full is listed under "coverage" so a partial scan is
+never mistaken for a clean one.
 
 Exit codes: 0 Approved, 2 ReviewRequired, 3 Quarantined, 1 scan error.
 `)
@@ -79,6 +106,7 @@ type jsonOutput struct {
 	Severities   securityv1alpha1.SeverityCounts `json:"severities"`
 	Violations   []string                        `json:"violations,omitempty"`
 	Findings     []securityv1alpha1.Finding      `json:"findings"`
+	Coverage     *resolver.Coverage              `json:"coverage,omitempty"`
 	Version      string                          `json:"assayVersion"`
 }
 
@@ -87,7 +115,7 @@ func runInspect(args []string) int {
 	jsonOut := fs.Bool("json", false, "emit the full report as JSON")
 	maxFiles := fs.Int("max-files", 0, "cap on files examined (0 = default limits)")
 	fs.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Usage: assay inspect <path> [--json] [--max-files N]")
+		fmt.Fprintln(os.Stderr, "Usage: assay inspect <path|uri> [--json] [--max-files N]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
@@ -97,9 +125,42 @@ func runInspect(args []string) int {
 		fs.Usage()
 		return exitError
 	}
-	path := fs.Arg(0)
+	target := fs.Arg(0)
 
-	if _, err := os.Stat(path); err != nil {
+	// A remote URI is staged into a temporary directory first, so the same
+	// inspector runs over local files and over a model that is still sitting
+	// on someone else's hub. That is the case a security engineer actually
+	// has: deciding whether an artifact is safe to bring in at all.
+	path := target
+	var coverage *resolver.Coverage
+	if isURI(target) {
+		staged, err := os.MkdirTemp("", "assay-*")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "assay inspect: %v\n", err)
+			return exitError
+		}
+		defer os.RemoveAll(staged)
+
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+
+		reg := resolver.NewRegistry()
+		if !reg.Supports(target) {
+			fmt.Fprintf(os.Stderr, "assay inspect: no resolver for %q\n", target)
+			return exitError
+		}
+		fmt.Fprintf(os.Stderr, "staging %s ...\n", target)
+		artifact, err := reg.Resolve(ctx, target, staged)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "assay inspect: %v\n", err)
+			return exitError
+		}
+		path = staged
+		coverage = artifact.Coverage
+		// The resolved URI carries the pinned revision, so the report names
+		// the exact bytes rather than a moving branch.
+		target = artifact.URI
+	} else if _, err := os.Stat(path); err != nil {
 		fmt.Fprintf(os.Stderr, "assay inspect: %v\n", err)
 		return exitError
 	}
@@ -113,6 +174,14 @@ func runInspect(args []string) int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "assay inspect: %v\n", err)
 		return exitError
+	}
+
+	// A file that could execute code and was never read is an unknown, and an
+	// unknown must not score as clean. Emitting it as a finding is what makes
+	// it reach the verdict: reporting it only in the coverage line meant a
+	// 548MB unread pickle came back Approved at risk 0.
+	for _, f := range coverageGaps(coverage) {
+		report.Findings = append(report.Findings, f)
 	}
 
 	severities := countSeverities(report.Findings)
@@ -137,13 +206,14 @@ func runInspect(args []string) int {
 
 	if *jsonOut {
 		out := jsonOutput{
-			Path:         path,
+			Path:         target,
 			Verdict:      eval.Verdict,
 			RiskScore:    eval.RiskScore,
 			FilesScanned: report.FilesScanned,
 			Formats:      report.Formats,
 			Severities:   severities,
 			Findings:     report.Findings,
+			Coverage:     coverage,
 			Version:      version,
 		}
 		for _, v := range eval.Violations {
@@ -156,7 +226,7 @@ func runInspect(args []string) int {
 			return exitError
 		}
 	} else {
-		printHuman(path, report, severities, eval)
+		printHuman(target, report, severities, eval, coverage)
 	}
 
 	switch eval.Verdict {
@@ -169,12 +239,38 @@ func runInspect(args []string) int {
 	}
 }
 
+// coverageGaps turns unread executable files into findings.
+//
+// High rather than Critical: the file was not read, so there is no evidence it
+// is malicious — only an absence of evidence that it is safe. High is enough
+// to deny an Approved verdict, which is the whole point.
+func coverageGaps(cov *resolver.Coverage) []securityv1alpha1.Finding {
+	if cov == nil {
+		return nil
+	}
+	var out []securityv1alpha1.Finding
+	for _, f := range cov.UnreadExecutable() {
+		out = append(out, securityv1alpha1.Finding{
+			ID:       "ASSAY-COVERAGE-001",
+			Title:    "Executable-capable file was not scanned",
+			Severity: "High",
+			Category: "model",
+			Location: f,
+			Description: fmt.Sprintf(
+				"%s was not read (%s), and its format can execute code when the model is loaded. "+
+					"This artifact has not been cleared; raise the fetch limits or scan it locally.",
+				f, cov.Skipped[f]),
+		})
+	}
+	return out
+}
+
 // severityRank orders findings most-severe-first in human output.
 var severityRank = map[string]int{
 	"Critical": 0, "High": 1, "Medium": 2, "Low": 3, "Unknown": 4,
 }
 
-func printHuman(path string, report *inspector.Report, severities securityv1alpha1.SeverityCounts, eval policy.Evaluation) {
+func printHuman(path string, report *inspector.Report, severities securityv1alpha1.SeverityCounts, eval policy.Evaluation, cov *resolver.Coverage) {
 	fmt.Printf("assay %s — %s\n", version, path)
 	fmt.Printf("scanned %d file(s)", report.FilesScanned)
 	if len(report.Formats) > 0 {
@@ -204,6 +300,19 @@ func printHuman(path string, report *inspector.Report, severities securityv1alph
 	for _, v := range eval.Violations {
 		fmt.Printf("policy violation: %s\n", v)
 	}
+	// A partial fetch has to say so next to the verdict. "No findings" over
+	// files that were never read is not a clean result, and this is the line
+	// that stops it being read as one.
+	if cov != nil && !cov.Complete() {
+		fmt.Printf("\ncoverage: %s\n", cov.Summary())
+		if len(cov.Skipped) > 0 {
+			fmt.Println("  not read:")
+			for f, why := range cov.Skipped {
+				fmt.Printf("    %s — %s\n", f, why)
+			}
+		}
+	}
+
 	fmt.Printf("\nverdict: %s (risk score %d/100)\n", eval.Verdict, eval.RiskScore)
 }
 
