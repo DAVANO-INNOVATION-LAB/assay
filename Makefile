@@ -131,7 +131,12 @@ HELM_CHART ?= deploy/helm/assay
 .PHONY: helm-sync
 helm-sync: manifests ## Copy generated CRDs and RBAC rules into the Helm chart.
 	@rm -rf $(HELM_CHART)/crds && mkdir -p $(HELM_CHART)/crds
-	@cp config/crd/bases/*.yaml $(HELM_CHART)/crds/
+	@# Only actual CRDs: Helm rejects anything else in crds/, and that
+	@# directory also holds a kustomization.yaml for the Kustomize path.
+	@for f in config/crd/bases/*.yaml; do \
+		case "$$(basename $$f)" in kustomization.yaml) continue;; esac; \
+		cp "$$f" $(HELM_CHART)/crds/; \
+	done
 	@# The ClusterRole rules come from the kubebuilder markers via
 	@# config/rbac/role.yaml; the chart holds only the rules list so the
 	@# template can own the metadata. Edit the markers, never this file.
