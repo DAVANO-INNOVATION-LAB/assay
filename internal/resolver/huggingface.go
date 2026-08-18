@@ -13,7 +13,10 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // HuggingFaceResolver stages a model from the Hugging Face Hub, or any
@@ -62,6 +65,14 @@ type HuggingFaceLimits struct {
 	MaxTotalBytes int64
 	// HeaderBytes is how much of a large file is read to validate its header.
 	HeaderBytes int64
+	// Parallel is how many files are fetched at once.
+	//
+	// A scan is almost entirely network wait — inspection runs at ~2.6 GB/s,
+	// so on a typical model the parsing is well under a percent of wall time.
+	// The useful parallelism is therefore in the fetch, not in the analysis,
+	// and it is bounded rather than unlimited because the far side is a shared
+	// public service with its own rate limits.
+	Parallel int
 }
 
 // HuggingFaceDefaults are deliberately small. The interesting files are all
@@ -77,6 +88,7 @@ func HuggingFaceDefaults() HuggingFaceLimits {
 		MaxFileBytes:  8 << 30,  // 8 GiB read in full
 		MaxTotalBytes: 32 << 30, // 32 GiB staged in total
 		HeaderBytes:   16 << 20, // far past any real tensor header
+		Parallel:      8,
 	}
 }
 
@@ -253,47 +265,88 @@ func (h *HuggingFaceResolver) Resolve(ctx context.Context, uri, destDir string) 
 	}
 
 	lim := h.limits()
-	cov := Coverage{Skipped: map[string]string{}}
-	var total int64
+	parallel := lim.Parallel
+	if parallel < 1 {
+		parallel = 1
+	}
 
-	for _, e := range entries {
-		if len(cov.FetchedWhole)+len(cov.HeaderOnly) >= lim.MaxFiles {
+	// Coverage and the byte total are written from several goroutines, so they
+	// are guarded rather than accumulated in place.
+	var (
+		mu    sync.Mutex
+		total int64
+		cov   = Coverage{Skipped: map[string]string{}}
+	)
+
+	if len(entries) > lim.MaxFiles {
+		for _, e := range entries[lim.MaxFiles:] {
 			cov.Skipped[e.Path] = "file limit reached"
-			continue
 		}
-		target, err := safeJoin(destDir, e.Path)
-		if err != nil {
-			// A repository path that escapes the staging directory is itself
-			// a finding, but the resolver's job is to refuse it.
-			return nil, fmt.Errorf("repository %s: %w", repo, err)
-		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return nil, err
-		}
+		entries = entries[:lim.MaxFiles]
+	}
 
-		size := e.size()
-		switch {
-		case headerInspectable(e.Path):
-			// Sampled whatever the size: the risk in these formats is entirely
-			// in the header, so the remaining bytes are inert weight data.
-			n, err := h.sampleHeader(ctx, repo, sha, e.Path, target, lim.HeaderBytes)
+	group, gctx := errgroup.WithContext(ctx)
+	group.SetLimit(parallel)
+
+	for _, entry := range entries {
+		e := entry
+		group.Go(func() error {
+			target, err := safeJoin(destDir, e.Path)
 			if err != nil {
-				return nil, err
+				// A repository path that escapes the staging directory is
+				// itself a finding, but the resolver's job is to refuse it.
+				return fmt.Errorf("repository %s: %w", repo, err)
 			}
-			total += n
-			cov.HeaderOnly = append(cov.HeaderOnly, e.Path)
-
-		case size <= lim.MaxFileBytes && total+size <= lim.MaxTotalBytes:
-			n, err := h.download(ctx, repo, sha, e.Path, target, 0)
-			if err != nil {
-				return nil, err
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
 			}
-			total += n
-			cov.FetchedWhole = append(cov.FetchedWhole, e.Path)
 
-		default:
-			cov.Skipped[e.Path] = fmt.Sprintf("%d bytes exceeds the fetch limit and the format has no inspectable header", size)
-		}
+			size := e.size()
+			switch {
+			case headerInspectable(e.Path):
+				// Sampled whatever the size: the risk in these formats is
+				// entirely in the header, so the rest is inert weight data.
+				n, err := h.sampleHeader(gctx, repo, sha, e.Path, target, lim.HeaderBytes)
+				if err != nil {
+					return err
+				}
+				mu.Lock()
+				total += n
+				cov.HeaderOnly = append(cov.HeaderOnly, e.Path)
+				mu.Unlock()
+
+			case size <= lim.MaxFileBytes:
+				// The running total is checked before committing to a file so
+				// a repository cannot walk past the ceiling one file at a time.
+				mu.Lock()
+				room := total+size <= lim.MaxTotalBytes
+				mu.Unlock()
+				if !room {
+					mu.Lock()
+					cov.Skipped[e.Path] = "total fetch limit reached"
+					mu.Unlock()
+					return nil
+				}
+				n, err := h.download(gctx, repo, sha, e.Path, target, 0)
+				if err != nil {
+					return err
+				}
+				mu.Lock()
+				total += n
+				cov.FetchedWhole = append(cov.FetchedWhole, e.Path)
+				mu.Unlock()
+
+			default:
+				mu.Lock()
+				cov.Skipped[e.Path] = fmt.Sprintf(
+					"%d bytes exceeds the fetch limit and the format has no inspectable header", size)
+				mu.Unlock()
+			}
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
 	}
 
 	sort.Strings(cov.FetchedWhole)
