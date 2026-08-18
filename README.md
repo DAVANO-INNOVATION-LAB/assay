@@ -61,7 +61,7 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Scanner images | `scanners/` | Built: ClamAV, Trivy, Syft, TruffleHog, Grype |
 | AI RMF assessment | `internal/compliance` | Working: 72 controls, evidence-or-attestation |
 | Cosign verification | `cmd/runner` | Stub that fails closed |
-| AI safety evaluation | — | Phase 2 |
+| Behavioural AI evaluation | — | **Out of scope by design** — see the note under Roadmap |
 | Console plugin | — | Phase 2 |
 
 The operator builds, the test suite passes, the scanner images build and run,
