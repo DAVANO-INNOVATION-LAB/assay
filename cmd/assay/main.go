@@ -180,9 +180,7 @@ func runInspect(args []string) int {
 	// unknown must not score as clean. Emitting it as a finding is what makes
 	// it reach the verdict: reporting it only in the coverage line meant a
 	// 548MB unread pickle came back Approved at risk 0.
-	for _, f := range coverageGaps(coverage) {
-		report.Findings = append(report.Findings, f)
-	}
+	report.Findings = append(report.Findings, coverageGaps(coverage)...)
 
 	severities := countSeverities(report.Findings)
 
