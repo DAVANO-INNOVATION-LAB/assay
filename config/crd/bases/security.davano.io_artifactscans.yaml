@@ -247,6 +247,13 @@ spec:
                 description: RiskScore is 0 (clean) to 100 (critical risk).
                 format: int32
                 type: integer
+              scannedDigest:
+                description: |-
+                  ScannedDigest is the content digest the fetch step measured on the bytes
+                  it actually staged. It is the identity a verdict belongs to: the
+                  admission gate compares it against the digest a workload is deploying,
+                  so an approval cannot be replayed onto different bytes at the same URI.
+                type: string
               startTime:
                 format: date-time
                 type: string

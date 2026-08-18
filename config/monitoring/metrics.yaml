@@ -1,0 +1,111 @@
+# Assay's metrics are the only way to tell a working gate from one that is
+# failing open: assay_admission_decisions_total{outcome="allowed_unscanned"}
+# counts workloads admitted purely because nothing had scanned them. Without a
+# Service nothing can scrape that, so the numbers exist and no one sees them.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: assay-controller-manager-metrics
+  namespace: assay-system
+  labels:
+    app.kubernetes.io/name: assay-model-scanner
+    app.kubernetes.io/component: metrics
+spec:
+  # Must match the Deployment's pod labels in config/manager/manager.yaml.
+  selector:
+    app.kubernetes.io/name: assay-model-scanner
+    app.kubernetes.io/component: controller
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: metrics
+      protocol: TCP
+---
+# Requires the Prometheus Operator (OpenShift ships it). Apply this file only
+# when the ServiceMonitor CRD is present; the Service above is useful either
+# way for a manual scrape or a port-forward.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: assay-controller-manager
+  namespace: assay-system
+  labels:
+    app.kubernetes.io/name: assay-model-scanner
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: assay-model-scanner
+      app.kubernetes.io/component: metrics
+  endpoints:
+    - port: metrics
+      interval: 30s
+      path: /metrics
+---
+# Alerts on the failure modes that are otherwise invisible, because each one
+# looks exactly like normal operation from the outside.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: assay-gate-health
+  namespace: assay-system
+  labels:
+    app.kubernetes.io/name: assay-model-scanner
+spec:
+  groups:
+    - name: assay.gate
+      rules:
+        - alert: AssayAdmittingUnscannedModels
+          # Not necessarily a fault: --require-report=false is the shipped
+          # default, so this fires when coverage is incomplete. That is the
+          # point — silence here should mean "everything is scanned", not
+          # "nobody is looking".
+          expr: |
+            sum(rate(assay_admission_decisions_total{outcome="allowed_unscanned"}[15m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: Assay is admitting models it has never scanned
+            description: >-
+              Workloads are being admitted because no ModelSecurityReport exists
+              for them. Assay is not gating these deployments. Check connector
+              sync and scan completion before assuming models are clean.
+
+        - alert: AssayGateBypassedByAnnotation
+          expr: |
+            sum(rate(assay_admission_decisions_total{outcome="allowed_skip_annotation"}[1h])) > 0
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: Workloads are skipping Assay validation by annotation
+            description: >-
+              The security.davano.io/skip-validation annotation is in use. Anyone
+              who can set it on their own workload bypasses the gate entirely.
+
+        - alert: AssayScannerErroring
+          # A scanner that errors on everything contributes no findings, and an
+          # artifact with no findings scores as clean.
+          expr: |
+            sum by (scanner) (rate(assay_scanner_results_total{status="Error"}[30m])) > 0
+          for: 30m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Scanner {{ $labels.scanner }} is failing"
+            description: >-
+              A failing scanner produces no findings, which is scored the same as
+              a clean result for that dimension.
+
+        - alert: AssaySourceSyncFailing
+          expr: |
+            sum by (source) (rate(assay_source_sync_failures_total[15m])) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Assay cannot sync model source {{ $labels.source }}"
+            description: >-
+              New model versions are not being discovered, so they will deploy
+              as unscanned.

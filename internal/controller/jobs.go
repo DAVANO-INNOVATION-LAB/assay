@@ -42,6 +42,11 @@ const (
 	LabelScanner   = "security.davano.io/scanner"
 	LabelManagedBy = "app.kubernetes.io/managed-by"
 	ManagerName    = "assay-operator"
+
+	// AnnotationArtifactDigest carries the digest the fetch step measured,
+	// from the scan report the publish step writes back up to the model
+	// report the admission gate reads. Must match the key cmd/runner sets.
+	AnnotationArtifactDigest = "security.davano.io/artifact-digest"
 )
 
 // JobConfig holds the cluster-level settings the orchestrator needs.

@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/metrics"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/policy"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/scanners"
 )
@@ -27,6 +28,9 @@ type ArtifactScanReconciler struct {
 	client.Client
 	Scheme    *runtime.Scheme
 	JobConfig JobConfig
+	// ScanDeadline bounds how long a scan may stay unfinished before it is
+	// failed. Zero uses DefaultScanDeadline.
+	ScanDeadline time.Duration
 }
 
 // +kubebuilder:rbac:groups=security.davano.io,resources=artifactscans,verbs=get;list;watch;create;update;patch;delete
@@ -101,6 +105,21 @@ func (r *ArtifactScanReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	scan.Status.Results = results
 	if pending > 0 {
+		// A scan can wait forever on a report that will never arrive: the Job
+		// succeeds, its TTL deletes it, and the publish step never wrote the
+		// report (OOM, RBAC denial, API conflict). From then on there is no Job
+		// to read a status from and no report to read a result from, so the
+		// scan requeues every 15s indefinitely, with the evidence already
+		// garbage-collected. A deadline converts that silent hang into a
+		// verdict an operator can see and a policy can act on.
+		if deadline := r.scanDeadline(); deadline > 0 && scan.Status.StartTime != nil {
+			if waited := time.Since(scan.Status.StartTime.Time); waited > deadline {
+				return r.fail(ctx, &scan, fmt.Sprintf(
+					"scan did not complete within %s (%d scanner(s) still pending); "+
+						"check the scan job logs and the publish step's RBAC",
+					deadline, pending))
+			}
+		}
 		logger.V(1).Info("waiting on scanners", "pending", pending, "scan", scan.Name)
 		if err := r.Status().Update(ctx, &scan); err != nil {
 			return ctrl.Result{}, err
@@ -133,6 +152,14 @@ func (r *ArtifactScanReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	if err := r.upsertModelSecurityReport(ctx, &scan, eval); err != nil {
 		return ctrl.Result{}, err
+	}
+
+	metrics.ScanVerdicts.WithLabelValues(eval.Verdict).Inc()
+	for _, result := range results {
+		metrics.ScannerResults.WithLabelValues(result.Scanner, result.Status).Inc()
+	}
+	if scan.Status.StartTime != nil {
+		metrics.ScanDuration.Observe(now.Sub(scan.Status.StartTime.Time).Seconds())
 	}
 
 	logger.Info("scan completed",
@@ -245,11 +272,33 @@ func (r *ArtifactScanReconciler) collectResults(ctx context.Context, scan *secur
 		return nil, 0, fmt.Errorf("list scan reports: %w", err)
 	}
 	byScanner := map[string]securityv1alpha1.ScannerResult{}
-	for _, report := range reports.Items {
+	for i := range reports.Items {
+		report := &reports.Items[i]
+
+		// The publish step writes reports without an owner: it runs with a
+		// deliberately minimal token that cannot read the ArtifactScan, so it
+		// has no UID to point at. Nothing else adopted them either, so they
+		// outlived their scan, accumulated in etcd with their full findings
+		// arrays, and — because report names are deterministic — a stale one
+		// could be mistaken for the current run's result. The controller has
+		// the scan in hand, so it adopts them here.
+		if err := r.adoptReport(ctx, scan, report); err != nil {
+			return nil, 0, err
+		}
+
 		summary := report.Summary
 		summary.Scanner = report.Scanner
 		summary.ReportRef = report.Name
 		byScanner[report.Scanner] = summary
+
+		// The fetch step is the only thing that sees the artifact's real bytes,
+		// so the digest it measured is the only trustworthy one. It arrives as
+		// an annotation on the scan report; record it on the scan so the model
+		// report can carry it to the admission gate, which refuses to honour a
+		// verdict for a digest other than the one actually scanned.
+		if digest := report.Annotations[AnnotationArtifactDigest]; digest != "" {
+			scan.Status.ScannedDigest = digest
+		}
 	}
 
 	var (
@@ -301,10 +350,17 @@ func (r *ArtifactScanReconciler) upsertModelSecurityReport(ctx context.Context, 
 	}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, report, func() error {
+		artifact := scan.Spec.Artifact
+		// The spec's digest is whatever the registry claimed, and is usually
+		// empty. What the gate must compare against is the digest actually
+		// measured while staging the bytes, so the measured one wins.
+		if scan.Status.ScannedDigest != "" {
+			artifact.Digest = scan.Status.ScannedDigest
+		}
 		report.Spec = securityv1alpha1.ModelSecurityReportSpec{
 			ModelName:    scan.Spec.ModelName,
 			ModelVersion: scan.Spec.ModelVersion,
-			Artifact:     scan.Spec.Artifact,
+			Artifact:     artifact,
 			ScanRef:      scan.Name,
 		}
 		if report.Labels == nil {
@@ -347,15 +403,63 @@ func (r *ArtifactScanReconciler) upsertModelSecurityReport(ctx context.Context, 
 	return nil
 }
 
+// adoptReport makes the ArtifactScan the owner of one of its scan reports, so
+// deleting the scan garbage-collects its evidence with it. It is a no-op once
+// the reference is in place.
+func (r *ArtifactScanReconciler) adoptReport(
+	ctx context.Context,
+	scan *securityv1alpha1.ArtifactScan,
+	report *securityv1alpha1.ArtifactScanReport,
+) error {
+	if metav1.IsControlledBy(report, scan) {
+		return nil
+	}
+	if err := controllerutil.SetControllerReference(scan, report, r.Scheme); err != nil {
+		// Already owned by something else: leave it alone rather than fight
+		// over it, and let the scan proceed on the result it carries.
+		return nil
+	}
+	if err := r.Update(ctx, report); err != nil {
+		if apierrors.IsConflict(err) || apierrors.IsNotFound(err) {
+			// A racing writer or a TTL sweep; the next reconcile retries.
+			return nil
+		}
+		return fmt.Errorf("adopt scan report %s: %w", report.Name, err)
+	}
+	return nil
+}
+
+// DefaultScanDeadline bounds how long a scan may sit unfinished. It is
+// comfortably longer than the Job's own ActiveDeadlineSeconds so a slow but
+// working scan is never cut off; it exists to catch scans that can no longer
+// make progress at all.
+const DefaultScanDeadline = 2 * time.Hour
+
+func (r *ArtifactScanReconciler) scanDeadline() time.Duration {
+	if r.ScanDeadline > 0 {
+		return r.ScanDeadline
+	}
+	return DefaultScanDeadline
+}
+
+// fail marks a scan terminally unsuccessful. The verdict is ReviewRequired
+// rather than Approved because an incomplete scan is not evidence of safety.
 func (r *ArtifactScanReconciler) fail(ctx context.Context, scan *securityv1alpha1.ArtifactScan, message string) (ctrl.Result, error) {
 	now := metav1.Now()
 	scan.Status.Phase = "Failed"
 	scan.Status.Message = message
 	scan.Status.CompletionTime = &now
 	scan.Status.Verdict = securityv1alpha1.VerdictReviewRequired
+	setCondition(&scan.Status.Conditions, metav1.Condition{
+		Type:    "Complete",
+		Status:  metav1.ConditionFalse,
+		Reason:  "ScanFailed",
+		Message: message,
+	})
 	if err := r.Status().Update(ctx, scan); err != nil {
 		return ctrl.Result{}, err
 	}
+	metrics.ScanVerdicts.WithLabelValues("Failed").Inc()
 	return ctrl.Result{}, nil
 }
 

@@ -50,6 +50,7 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Model Registry client | `internal/registry` | Working: list, paginate, patch properties |
 | Model sources | `internal/modelsource` | `Source` interface (List/Resolve/WriteBack); OpenShift registry + MLflow, MLflow live-tested |
 | Standalone CLI | `cmd/assay` | Working: `assay inspect`, CI exit codes, JSON output |
+| Metrics | `internal/metrics` | Admission decisions, scan verdicts and durations, scanner and sync failures |
 | Artifact resolvers | `internal/resolver` | HTTP run end-to-end; OCI/S3/ODF/ModelCar compile but **untested against real storage**; PVC not yet mounted by the Job builder |
 | Scan orchestrator | `internal/controller` | Working: one Job per scanner |
 | Model inspector | `internal/inspector` | Working: pickle, archive, format analysis |
@@ -337,6 +338,40 @@ a running cluster, and both should be tightened once coverage is complete:
 - The webhook's `failurePolicy: Ignore` keeps a Assay outage from blocking all
   model deployments. `Fail` is the stronger setting, because `Ignore` means
   anyone who can disrupt Assay can also bypass the gate.
+
+Because both defaults fail open, a gate that is doing nothing looks exactly
+like a gate that is working. That is what the metrics below are for.
+
+## Watching the gate
+
+`assay_admission_decisions_total{outcome="allowed_unscanned"}` is the number
+that matters: workloads admitted **only** because Assay had no report for
+them. It is not a measure of safety — it is a measure of how much the gate is
+not covering. `outcome="allowed_skip_annotation"` counts workloads that opted
+out with `security.davano.io/skip-validation`, which any author can set on
+their own workload.
+
+Alongside those: `assay_scan_verdicts_total`, `assay_scan_duration_seconds`,
+`assay_scanner_results_total` (a scanner erroring on everything produces no
+findings, which scores identically to a clean result), and
+`assay_source_sync_failures_total`.
+
+```bash
+kubectl apply -f config/monitoring/metrics.yaml
+```
+
+That ships a Service, a ServiceMonitor, and alerts for each of the failure
+modes above. The ServiceMonitor and PrometheusRule need the Prometheus
+Operator; the Service alone is enough to scrape or port-forward by hand.
+
+### The gate needs to know where reports live
+
+Scans run in the operator's namespace; the workloads being gated run in the
+teams' namespaces. The gate therefore searches the workload's namespace first
+and then `--report-namespace` (defaulted from `POD_NAMESPACE`). If neither
+holds the report, the model is treated as unscanned — so if that flag is unset
+and reports live elsewhere, the gate finds nothing and admits everything. The
+manager logs a warning at startup when it cannot determine the namespace.
 
 ## Development
 

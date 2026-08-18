@@ -13,7 +13,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/metrics"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/naming"
 )
 
@@ -434,5 +437,38 @@ func TestWorkloadNamespaceReportTakesPrecedence(t *testing.T) {
 	}))
 	if !resp.Allowed {
 		t.Errorf("local approved report was not preferred: %s", resp.Result.Message)
+	}
+}
+
+// A gate that fails open is indistinguishable from a working gate unless what
+// it waved through is counted. "Allowed because there was no report" and
+// "allowed because the model passed" are opposite facts that produce the same
+// admission response, so they must not share a counter.
+func TestUnscannedAdmissionsAreCountedSeparately(t *testing.T) {
+	const ns = "counted-ns"
+
+	read := func(outcome string) float64 {
+		return testutil.ToFloat64(metrics.AdmissionDecisions.WithLabelValues(outcome, ns))
+	}
+	beforeUnscanned := read(metrics.OutcomeAllowedNoScan)
+	beforeApproved := read(metrics.OutcomeAllowed)
+
+	gate := newGate(t) // no reports at all
+	req := deployment(map[string]string{
+		AnnotationModel:   "never-scanned",
+		AnnotationVersion: "v1",
+	})
+	req.Namespace = ns
+
+	resp := gate.Handle(context.Background(), req)
+	if !resp.Allowed {
+		t.Fatalf("expected the permissive default to admit: %v", resp.Result)
+	}
+
+	if got := read(metrics.OutcomeAllowedNoScan); got != beforeUnscanned+1 {
+		t.Errorf("allowed_unscanned counter = %v, want %v", got, beforeUnscanned+1)
+	}
+	if got := read(metrics.OutcomeAllowed); got != beforeApproved {
+		t.Errorf("an unscanned admission was counted as an approval (%v)", got)
 	}
 }

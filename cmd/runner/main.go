@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/controller"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/inspector"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/naming"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/resolver"
@@ -259,7 +260,10 @@ func runPublish(ctx context.Context, args []string) error {
 			if report.Annotations == nil {
 				report.Annotations = map[string]string{}
 			}
-			report.Annotations["security.davano.io/artifact-digest"] = metadata.Digest
+			// The controller lifts this onto the ArtifactScan and then the
+			// ModelSecurityReport, where the admission gate uses it to refuse
+			// a verdict that does not belong to the bytes being deployed.
+			report.Annotations[controller.AnnotationArtifactDigest] = metadata.Digest
 			report.Annotations["security.davano.io/artifact-uri"] = metadata.URI
 		}
 	}

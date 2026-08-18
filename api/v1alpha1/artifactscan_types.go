@@ -54,6 +54,12 @@ type ArtifactScanStatus struct {
 	Verdict string `json:"verdict,omitempty"`
 	// +optional
 	Message string `json:"message,omitempty"`
+	// ScannedDigest is the content digest the fetch step measured on the bytes
+	// it actually staged. It is the identity a verdict belongs to: the
+	// admission gate compares it against the digest a workload is deploying,
+	// so an approval cannot be replayed onto different bytes at the same URI.
+	// +optional
+	ScannedDigest string `json:"scannedDigest,omitempty"`
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
