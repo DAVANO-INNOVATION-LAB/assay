@@ -57,7 +57,9 @@ func loggedIn(t *testing.T, s *Server, req *http.Request, user string, groups ..
 	if err := s.sessions.issue(rec, req, user, groups); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range rec.Result().Cookies() {
+	res := rec.Result()
+	defer res.Body.Close()
+	for _, c := range res.Cookies() {
 		req.AddCookie(c)
 	}
 	return req
@@ -112,7 +114,9 @@ func TestForgedSessionIsRejected(t *testing.T) {
 	rec := httptest.NewRecorder()
 	_ = other.issue(rec, httptest.NewRequest(http.MethodGet, "/", nil), "attacker", []string{"secops"})
 	req := httptest.NewRequest(http.MethodGet, "/api/models", nil)
-	for _, c := range rec.Result().Cookies() {
+	otherRes := rec.Result()
+	defer otherRes.Body.Close()
+	for _, c := range otherRes.Cookies() {
 		req.AddCookie(c)
 	}
 	out := httptest.NewRecorder()
@@ -275,7 +279,9 @@ func TestSessionsExpire(t *testing.T) {
 	expired, _ := json.Marshal(session{Username: "u", Expires: time.Now().Add(-time.Hour).Unix()})
 	http.SetCookie(rec, &http.Cookie{Name: sessionCookie, Value: codec.sign(expired)})
 	var value string
-	for _, c := range rec.Result().Cookies() {
+	res := rec.Result()
+	defer res.Body.Close()
+	for _, c := range res.Cookies() {
 		if c.Name == sessionCookie {
 			value = c.Value
 		}
