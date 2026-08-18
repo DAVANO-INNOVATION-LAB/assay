@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -316,5 +317,43 @@ func TestBlockUnsafeModelCanBeDisabled(t *testing.T) {
 
 	if hasRule(eval.Violations, RuleBlockUnsafeModel) {
 		t.Errorf("rule still enforced after being disabled: %v", eval.Violations)
+	}
+}
+
+// A result whose scanner name is not in the catalog used to be dropped on the
+// floor: it disappeared from every category, so no rule saw it, no violation
+// fired, and twelve critical findings came back Approved at risk 0. A renamed
+// scanner between operator versions was enough to turn findings into a clean
+// bill of health.
+func TestUnrecognisedScannerCannotProduceACleanVerdict(t *testing.T) {
+	eval := Evaluate([]securityv1alpha1.ScannerResult{{
+		Scanner:    "clamav-v2", // not in the catalog
+		Status:     "Failed",
+		Findings:   12,
+		Severities: securityv1alpha1.SeverityCounts{Critical: 12},
+	}}, securityv1alpha1.ArtifactRef{URI: "s3://models/x"}, nil, nil, time.Now())
+
+	if eval.Verdict == securityv1alpha1.VerdictApproved {
+		t.Error("twelve critical findings from an unrecognised scanner produced an Approved verdict")
+	}
+	if len(eval.Violations) == 0 {
+		t.Fatal("no violation was raised for results that were never interpreted")
+	}
+	var named bool
+	for _, v := range eval.Violations {
+		if v.Rule == RuleScanIncomplete && strings.Contains(v.Message, "clamav-v2") {
+			named = true
+		}
+	}
+	if !named {
+		t.Errorf("the violation does not name the scanner that could not be interpreted: %+v", eval.Violations)
+	}
+
+	// A known scanner must still behave exactly as before.
+	clean := Evaluate([]securityv1alpha1.ScannerResult{{
+		Scanner: "clamav", Status: "Passed",
+	}}, securityv1alpha1.ArtifactRef{URI: "s3://models/x"}, nil, nil, time.Now())
+	if clean.Verdict != securityv1alpha1.VerdictApproved {
+		t.Errorf("a clean result from a known scanner no longer passes: %s — %+v", clean.Verdict, clean.Violations)
 	}
 }

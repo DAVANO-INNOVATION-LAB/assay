@@ -31,3 +31,6 @@ kubeconfig
 *.pem
 *.key
 !**/testdata/*.key
+
+# Internal engineering handoff; not part of the release.
+HANDOFF.md

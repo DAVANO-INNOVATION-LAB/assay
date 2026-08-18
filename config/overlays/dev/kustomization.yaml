@@ -54,3 +54,16 @@ patches:
       kind: ValidatingWebhookConfiguration
       metadata:
         name: assay-model-deployment-gate
+
+  # The signer is gated behind --enable-webhook too, so leaving its
+  # configuration behind would point a failurePolicy: Fail webhook at a
+  # listener that never starts — and every ArtifactException in the cluster
+  # would be rejected, including the console's accept-risk button.
+  - target:
+      kind: MutatingWebhookConfiguration
+    patch: |
+      $patch: delete
+      apiVersion: admissionregistration.k8s.io/v1
+      kind: MutatingWebhookConfiguration
+      metadata:
+        name: assay-exception-signer
