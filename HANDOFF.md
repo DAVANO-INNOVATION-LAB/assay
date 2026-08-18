@@ -5,12 +5,21 @@ still `~/m-dev/zeus`; module is `github.com/DAVANO-INNOVATION-LAB/assay`; API gr
 `security.davano.io` (org-tied on purpose, so a product rename never breaks CRs).
 Org is **Davano**.
 
-## State
-- Rename is complete and **verified green**: `go build ./...`, `go vet`, and the
-  full test suite all pass. Uncommitted at time of writing.
-- Real fix this session: pickle **protocol 4/5 `STACK_GLOBAL`** evaded the
-  Critical dangerous-import check (a plain `pickle.dumps()` of `os.system`, since
-  Python's default is protocol 5, degraded to a generic warning). Fixed, with a
+## State (updated 2026-08-18)
+- **GitHub repo moved** JUMP1ST/zeus-model-scanner → **DAVANO-INNOVATION-LAB/assay**
+  (transfer, history + redirects preserved). Module path rewritten repo-wide;
+  full suite green under it; local `origin` already points at the new URL.
+- **Standalone CLI shipped**: `cmd/assay`, `assay inspect <path>` runs the same
+  inspector + policy spine cluster-free. CI exit codes (0 Approved / 2 Review /
+  3 Quarantined / 1 error), `--json`, `make cli` / `cli-release`.
+- **ModelSource interface** (`internal/modelsource`): `Source` =
+  List/Resolve/WriteBack. Two impls — OpenShift Model Registry adapter and a new
+  **MLflow** source (artifact-proxy staging; verdict written back as
+  `assay.verdict` / `assay.risk_score` tags). httptest unit tests + a Docker-gated
+  **live test** (`make test-mlflow`, `-tags mlflow_live`) that registers a
+  malicious pickle in a real MLflow server and asserts Quarantined + tag written
+  back. Verified passing (Quarantined, risk 60).
+- Prior real fix still stands: pickle **protocol 4/5 `STACK_GLOBAL`** detection,
   6-protocol regression test in `internal/inspector/pickleproto_test.go`.
 - Ran end-to-end on a **kind** cluster; demo UI at `ui/index.html` served via
   `kubectl proxy --www` (POSTs `ArtifactScan`s, reads back reports live).
@@ -29,17 +38,20 @@ research, explicitly out of scope in the README, not a roadmap.
 - Demo UI writes to the cluster via `kubectl proxy` (full kubeconfig — demo only).
 - Permissive by design: `--require-report=false`, webhook `failurePolicy: Ignore`.
 
-## Next steps (decided 2026-08-11)
-1. Commit the rename; then rename the GitHub repo + quay `davano/` namespace.
-2. Ship the standalone inspector CLI (`assay inspect <path>`) publicly first —
-   it is the credibility artifact and already Kubernetes-free (`cmd/runner`).
-3. First **real** integration = **MLflow**, via a generalized `ModelSource`
-   interface (`List` / `Resolve` / `WriteBack`), live-tested against an `mlflow`
-   container. Assert Quarantined + risk 100 + verdict written back as a tag.
-4. Runtime scanning = KServe `InferenceService` admission gate + init-container
-   scan-gate. Deferred until the MLflow path is solid. Registry scan and runtime
-   scan are the **same pipeline, different triggers** — one spine, two triggers.
-5. Langfuse = verdict×trace **correlation**, not model scanning — keep separate.
+## Next steps
+Done since 2026-08-11: repo moved to the Davano org (~~GitHub rename~~), CLI
+shipped (was step 2), MLflow via generalized `ModelSource` (was step 3).
+Remaining:
+1. **quay `davano/` namespace** — image repos still under old naming; rename or
+   recreate `quay.io/davano/assay-operator` + `scanner-*` (needs Docker/quay creds).
+   This is the only unfinished piece of the org move; needs the user.
+2. **Wire the MLflow `Source` into the in-cluster controller.** Today it's
+   proven via the CLI/test path (`internal/modelsource`); make it a connector
+   trigger alongside `ModelRegistryConnector` so a cluster polls MLflow directly.
+3. Runtime scanning = KServe `InferenceService` admission gate + init-container
+   scan-gate. Registry scan and runtime scan are the **same pipeline, different
+   triggers** — one spine, two triggers.
+4. Langfuse = verdict×trace **correlation**, not model scanning — keep separate.
 
 ## Resume the live demo (after restarting Docker Desktop)
 ```
