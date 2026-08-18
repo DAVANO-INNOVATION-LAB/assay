@@ -129,6 +129,9 @@ func main() {
 	if err := (&controller.ModelRegistryConnectorReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		// Uncached: a cached Secret read would start an informer over every
+		// Secret in the cluster.
+		SecretReader: mgr.GetAPIReader(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ModelRegistryConnector")
 		os.Exit(1)

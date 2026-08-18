@@ -10,6 +10,15 @@ metadata:
     app.kubernetes.io/component: controller
 spec:
   replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Both replicas serve the admission webhook, so one must stay up
+      # throughout a rollout: with failurePolicy Ignore, a gap in endpoints is
+      # a gap in enforcement, not an outage anyone would notice.
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: assay-model-scanner
@@ -21,13 +30,35 @@ spec:
         app.kubernetes.io/component: controller
     spec:
       serviceAccountName: assay-controller-manager
+      # An admission webhook that gets preempted takes model deployment with
+      # it, since the gate then fails open.
+      priorityClassName: system-cluster-critical
+      # Endpoint removal is asynchronous with SIGTERM: without a short drain,
+      # AdmissionReviews already in flight hit a closing listener.
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          # Two replicas on one node is one drain away from no gate at all.
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: assay-model-scanner
+                    app.kubernetes.io/component: controller
       containers:
         - name: manager
           image: quay.io/davano/assay-operator:0.1.0
+          imagePullPolicy: IfNotPresent
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
           args:
             - --leader-elect
             - --health-probe-bind-address=:8081
@@ -60,12 +91,23 @@ spec:
             - name: metrics
               containerPort: 8080
               protocol: TCP
+          # Cache sync on a large cluster can take longer than the liveness
+          # probe's patience; a startup probe gives it room without also
+          # slowing down restart detection once running.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            periodSeconds: 5
+            failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /healthz
               port: 8081
             initialDelaySeconds: 15
             periodSeconds: 20
+          # /readyz reports the webhook's TLS listener, so the pod joins the
+          # Service only once it can actually answer an AdmissionReview.
           readinessProbe:
             httpGet:
               path: /readyz
