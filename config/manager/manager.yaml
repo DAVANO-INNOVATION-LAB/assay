@@ -2,57 +2,57 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: zeus-system
+  name: assay-system
   labels:
-    app.kubernetes.io/name: zeus-model-scanner
+    app.kubernetes.io/name: assay-model-scanner
     pod-security.kubernetes.io/enforce: restricted
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: zeus-controller-manager
-  namespace: zeus-system
+  name: assay-controller-manager
+  namespace: assay-system
   labels:
-    app.kubernetes.io/name: zeus-model-scanner
+    app.kubernetes.io/name: assay-model-scanner
     app.kubernetes.io/component: controller
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app.kubernetes.io/name: zeus-model-scanner
+      app.kubernetes.io/name: assay-model-scanner
       app.kubernetes.io/component: controller
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: zeus-model-scanner
+        app.kubernetes.io/name: assay-model-scanner
         app.kubernetes.io/component: controller
     spec:
-      serviceAccountName: zeus-controller-manager
+      serviceAccountName: assay-controller-manager
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: manager
-          image: quay.io/zeus-security/zeus-operator:0.1.0
+          image: quay.io/davano/assay-operator:0.1.0
           args:
             - --leader-elect
             - --health-probe-bind-address=:8081
             - --metrics-bind-address=:8080
-            - --scan-service-account=zeus-scanner
+            - --scan-service-account=assay-scanner
             # Point this at a mirror for a disconnected cluster; the scanner
             # images carry their own vulnerability and signature databases, so
             # scans themselves need no egress.
-            - --scanner-registry=quay.io/zeus-security
+            - --scanner-registry=quay.io/davano
             # Phase 1 default: report on models with no scan rather than
-            # blocking them, so installing Zeus cannot break existing
+            # blocking them, so installing Assay cannot break existing
             # deployments. Flip to true once coverage is complete.
             - --require-report=false
           env:
             # The scan Jobs run this same image for their fetch and publish
             # steps, so the manager must know its own image reference.
-            - name: ZEUS_OPERATOR_IMAGE
-              value: quay.io/zeus-security/zeus-operator:0.1.0
+            - name: ASSAY_OPERATOR_IMAGE
+              value: quay.io/davano/assay-operator:0.1.0
           ports:
             - name: webhook
               containerPort: 9443
@@ -93,5 +93,5 @@ spec:
           secret:
             # Populated by the OpenShift service CA operator via the
             # service.beta.openshift.io/serving-cert-secret-name annotation.
-            secretName: zeus-webhook-server-cert
+            secretName: assay-webhook-server-cert
       terminationGracePeriodSeconds: 10

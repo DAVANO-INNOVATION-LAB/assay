@@ -8,13 +8,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
-	"github.com/zeus-security/zeus-operator/internal/scanners"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	"github.com/JUMP1ST/assay/internal/scanners"
 )
 
 func testScan() *securityv1alpha1.ArtifactScan {
 	return &securityv1alpha1.ArtifactScan{
-		ObjectMeta: metav1.ObjectMeta{Name: "scan-fraud-v1", Namespace: "zeus-system"},
+		ObjectMeta: metav1.ObjectMeta{Name: "scan-fraud-v1", Namespace: "assay-system"},
 		Spec: securityv1alpha1.ArtifactScanSpec{
 			ModelName:    "fraud",
 			ModelVersion: "v1",
@@ -25,9 +25,9 @@ func testScan() *securityv1alpha1.ArtifactScan {
 
 func testJobConfig() JobConfig {
 	return JobConfig{
-		OperatorImage:   "quay.io/zeus-security/zeus-operator:0.1.0",
-		ScannerRegistry: "registry.internal/zeus",
-		ServiceAccount:  "zeus-scanner",
+		OperatorImage:   "quay.io/davano/assay-operator:0.1.0",
+		ScannerRegistry: "registry.internal/assay",
+		ServiceAccount:  "assay-scanner",
 		WorkspaceSize:   resource.MustParse("50Gi"),
 	}
 }
@@ -68,7 +68,7 @@ func TestScanPodStepOrdering(t *testing.T) {
 func TestScannerImageResolvesAgainstConfiguredRegistry(t *testing.T) {
 	pod, _ := buildFor(t, "trivy")
 
-	want := "registry.internal/zeus/scanner-trivy:" + scanners.ImageTag
+	want := "registry.internal/assay/scanner-trivy:" + scanners.ImageTag
 	if got := pod.InitContainers[1].Image; got != want {
 		t.Errorf("scan image = %q, want %q", got, want)
 	}
@@ -196,7 +196,7 @@ func TestScanContainerHasWritableTmp(t *testing.T) {
 func TestOnlyPublishCarriesClusterCredentials(t *testing.T) {
 	pod, _ := buildFor(t, "clamav")
 
-	if pod.ServiceAccountName != "zeus-scanner" {
+	if pod.ServiceAccountName != "assay-scanner" {
 		t.Errorf("service account = %q, want the restricted scanner account", pod.ServiceAccountName)
 	}
 
@@ -284,5 +284,75 @@ func TestPolicyCanOverrideScannerImage(t *testing.T) {
 
 	if got := job.Spec.Template.Spec.InitContainers[1].Image; got != spec.Image {
 		t.Errorf("scan image = %q, want the policy override %q", got, spec.Image)
+	}
+}
+
+// A pvc:// artifact must actually get the claim mounted where the resolver
+// looks for it. Without this the scheme parses, the Job starts, and the fetch
+// step fails on a path that is not in the pod — a failure mode no unit test
+// on the resolver alone would catch.
+func TestPVCArtifactMountsTheClaimForFetch(t *testing.T) {
+	scan := testScan()
+	scan.Spec.Artifact.URI = "pvc://model-store/models/fraud/v1"
+
+	def, _ := scanners.Get("clamav")
+	job, err := buildScanJob(scan, def, nil, testJobConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pod := job.Spec.Template.Spec
+
+	var claim string
+	for _, v := range pod.Volumes {
+		if v.Name == "artifact-pvc" {
+			if v.PersistentVolumeClaim == nil {
+				t.Fatal("artifact-pvc is not backed by a PersistentVolumeClaim")
+			}
+			claim = v.PersistentVolumeClaim.ClaimName
+			if !v.PersistentVolumeClaim.ReadOnly {
+				t.Error("claim is mounted writable; a scan must not be able to alter the artifact")
+			}
+		}
+	}
+	if claim != "model-store" {
+		t.Fatalf("claim = %q, want model-store", claim)
+	}
+
+	want := pvcMountRoot + "/model-store"
+	var mounted bool
+	for _, m := range pod.InitContainers[0].VolumeMounts {
+		if m.Name == "artifact-pvc" {
+			mounted = true
+			if m.MountPath != want {
+				t.Errorf("mount path = %q, want %q (where the resolver looks)", m.MountPath, want)
+			}
+			if !m.ReadOnly {
+				t.Error("fetch mounts the claim writable")
+			}
+		}
+	}
+	if !mounted {
+		t.Fatal("fetch step does not mount the claim")
+	}
+
+	// The scanner reads staged bytes from /workspace and must never get the
+	// claim itself — that would widen what a hostile artifact can reach.
+	for _, m := range pod.InitContainers[1].VolumeMounts {
+		if m.Name == "artifact-pvc" {
+			t.Error("scan container mounts the artifact claim; only fetch should")
+		}
+	}
+}
+
+func TestNonPVCArtifactAddsNoClaimVolume(t *testing.T) {
+	def, _ := scanners.Get("clamav")
+	job, err := buildScanJob(testScan(), def, nil, testJobConfig()) // s3:// URI
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range job.Spec.Template.Spec.Volumes {
+		if v.Name == "artifact-pvc" {
+			t.Fatal("claim volume added for a non-pvc artifact")
+		}
 	}
 }

@@ -9,7 +9,7 @@
 # that silently stopped matching will fail here rather than in production.
 set -euo pipefail
 
-REGISTRY="${1:-quay.io/zeus-security}"
+REGISTRY="${1:-quay.io/davano}"
 TAG="${2:-0.1.0}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -79,7 +79,7 @@ for line in open(src):
     record = json.loads(stripped)
     for field in ("Raw", "RawV2", "Redacted", "ExtraData"):
         if field in record:
-            record[field] = "REDACTED-BY-ZEUS-FIXTURE-CAPTURE"
+            record[field] = "REDACTED-BY-ASSAY-FIXTURE-CAPTURE"
     out.append(json.dumps(record))
 
 open(dst, "w").write("\n".join(out) + "\n")

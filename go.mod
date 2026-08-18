@@ -1,4 +1,4 @@
-module github.com/zeus-security/zeus-operator
+module github.com/JUMP1ST/assay
 
 go 1.25.0
 

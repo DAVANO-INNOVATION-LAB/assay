@@ -1,11 +1,11 @@
 ---
 # A production baseline: no malware, no live secrets, no critical CVEs, and
 # no pickle-format weights. Enforcement rejects failing deployments outright.
-apiVersion: security.zeus.io/v1alpha1
+apiVersion: security.davano.io/v1alpha1
 kind: ArtifactScanPolicy
 metadata:
   name: production-baseline
-  namespace: zeus-system
+  namespace: assay-system
 spec:
   enforcement: Enforce
   scanners:
@@ -36,11 +36,11 @@ spec:
 # A permissive policy for development namespaces: the same scanners run and
 # results are recorded, but nothing is blocked. Use this to measure the blast
 # radius of a stricter policy before enforcing it.
-apiVersion: security.zeus.io/v1alpha1
+apiVersion: security.davano.io/v1alpha1
 kind: ArtifactScanPolicy
 metadata:
   name: development-audit
-  namespace: zeus-system
+  namespace: assay-system
 spec:
   enforcement: Audit
   scanners:

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/zeus-security/zeus-operator/internal/scanners"
+	"github.com/JUMP1ST/assay/internal/scanners"
 )
 
 func writeFile(t *testing.T, name, content string) string {
@@ -31,7 +31,7 @@ func TestMissingOutputFileIsClean(t *testing.T) {
 
 func TestEmptyOutputIsClean(t *testing.T) {
 	for _, format := range []string{
-		scanners.FormatZeus, scanners.FormatClamAV, scanners.FormatTrivyJSON,
+		scanners.FormatAssay, scanners.FormatClamAV, scanners.FormatTrivyJSON,
 		scanners.FormatGrypeJSON, scanners.FormatSyftSPDX, scanners.FormatTrufflehog,
 	} {
 		t.Run(format, func(t *testing.T) {
@@ -176,12 +176,12 @@ func TestParseTrufflehogSkipsNonJSONLines(t *testing.T) {
 	}
 }
 
-func TestParseZeusNativeFormat(t *testing.T) {
+func TestParseAssayNativeFormat(t *testing.T) {
 	output := `{"findings":[
-    {"id":"ZEUS-PICKLE-001","title":"Pickle RCE","severity":"Critical","category":"model","location":"model.pkl"},
-    {"id":"ZEUS-EXEC-001","title":"Executable","severity":"Medium","category":"model","location":"run.sh"}
+    {"id":"ASSAY-PICKLE-001","title":"Pickle RCE","severity":"Critical","category":"model","location":"model.pkl"},
+    {"id":"ASSAY-EXEC-001","title":"Executable","severity":"Medium","category":"model","location":"run.sh"}
 ]}`
-	parsed, err := Parse(scanners.FormatZeus, writeFile(t, "zeus.json", output))
+	parsed, err := Parse(scanners.FormatAssay, writeFile(t, "assay.json", output))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestCappingKeepsTheMostSevereFindings(t *testing.T) {
 	}
 	output += `,{"id":"CRIT","severity":"Critical","category":"model"}]}`
 
-	parsed, err := Parse(scanners.FormatZeus, writeFile(t, "zeus.json", output))
+	parsed, err := Parse(scanners.FormatAssay, writeFile(t, "assay.json", output))
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}

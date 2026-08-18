@@ -1,4 +1,4 @@
-// Package inspector implements Zeus's own model-format scanner. Generic
+// Package inspector implements Assay's own model-format scanner. Generic
 // container scanners see a model as an opaque blob; this one understands the
 // serialization formats and flags the ways a model file can execute code.
 package inspector
@@ -17,7 +17,7 @@ import (
 	"regexp"
 	"strings"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
 )
 
 // Report is the model inspector's output.
@@ -65,7 +65,7 @@ func Inspect(root string, limits Limits) (*Report, error) {
 		if err != nil {
 			// A single unreadable file must not abort the whole scan.
 			report.Findings = append(report.Findings, finding(
-				"ZEUS-IO-001", "Unreadable file", "Low", relPath(root, path),
+				"ASSAY-IO-001", "Unreadable file", "Low", relPath(root, path),
 				fmt.Sprintf("could not read file: %v", err)))
 			return nil
 		}
@@ -85,7 +85,7 @@ func Inspect(root string, limits Limits) (*Report, error) {
 			target, _ := os.Readlink(path)
 			if isEscapingLink(root, path, target) {
 				report.Findings = append(report.Findings, finding(
-					"ZEUS-LINK-001", "Symlink escapes model directory", "High", rel,
+					"ASSAY-LINK-001", "Symlink escapes model directory", "High", rel,
 					fmt.Sprintf("symlink points outside the artifact: %s", target)))
 			}
 			return nil
@@ -98,7 +98,7 @@ func Inspect(root string, limits Limits) (*Report, error) {
 
 		if info.Mode().Perm()&0o111 != 0 {
 			report.Findings = append(report.Findings, finding(
-				"ZEUS-EXEC-001", "Executable file in model artifact", "Medium", rel,
+				"ASSAY-EXEC-001", "Executable file in model artifact", "Medium", rel,
 				"model artifacts should not ship executable files"))
 		}
 
@@ -109,7 +109,7 @@ func Inspect(root string, limits Limits) (*Report, error) {
 		findings, err := inspectFile(path, rel, limits)
 		if err != nil {
 			report.Findings = append(report.Findings, finding(
-				"ZEUS-IO-002", "Inspection error", "Low", rel, err.Error()))
+				"ASSAY-IO-002", "Inspection error", "Low", rel, err.Error()))
 			return nil
 		}
 		report.Findings = append(report.Findings, findings...)
@@ -151,11 +151,11 @@ func inspectFile(path, rel string, limits Limits) ([]securityv1alpha1.Finding, e
 		return inspectSafetensors(path, rel)
 	case ".so", ".dylib", ".dll":
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-NATIVE-001", "Native shared library in model artifact", "High", rel,
+			"ASSAY-NATIVE-001", "Native shared library in model artifact", "High", rel,
 			"shared libraries load arbitrary native code at model load time")}, nil
 	case ".sh", ".bash", ".zsh":
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-SHELL-001", "Shell script in model artifact", "Medium", rel,
+			"ASSAY-SHELL-001", "Shell script in model artifact", "Medium", rel,
 			"shell scripts bundled with a model may execute during load or serving")}, nil
 	}
 
@@ -215,7 +215,7 @@ func inspectPickleLike(path, rel string, limits Limits, declaredPickle bool) ([]
 			return nil, err
 		}
 		findings = append(findings, finding(
-			"ZEUS-PICKLE-002", "Torch zip container", "Medium", rel,
+			"ASSAY-PICKLE-002", "Torch zip container", "Medium", rel,
 			"file is a torch.save archive; loading it requires torch.load, which unpickles by default"))
 		return findings, nil
 	}
@@ -253,12 +253,10 @@ func scanPickleStream(r io.Reader, rel string, declaredPickle bool) ([]securityv
 		if !ok {
 			continue
 		}
-		// Pickle GLOBAL encodes the import as "module\nattr\n".
-		needle := []byte(module + "\n" + attr + "\n")
-		if bytes.Contains(data, needle) && !seen[imp] {
+		if referencesImport(data, module, attr) && !seen[imp] {
 			seen[imp] = true
 			findings = append(findings, finding(
-				"ZEUS-PICKLE-001", "Pickle imports a dangerous callable", "Critical", rel,
+				"ASSAY-PICKLE-001", "Pickle imports a dangerous callable", "Critical", rel,
 				fmt.Sprintf("pickle stream references %s, which executes on load", imp)))
 		}
 	}
@@ -272,16 +270,70 @@ func scanPickleStream(r io.Reader, rel string, declaredPickle bool) ([]securityv
 		}
 		if len(opcodes) > 0 {
 			findings = append(findings, finding(
-				"ZEUS-PICKLE-003", "Pickle contains code-executing opcodes", "High", rel,
+				"ASSAY-PICKLE-003", "Pickle contains code-executing opcodes", "High", rel,
 				fmt.Sprintf("stream uses opcodes that can execute code (%s); prefer safetensors", strings.Join(dedupe(opcodes), ", "))))
 		} else {
 			findings = append(findings, finding(
-				"ZEUS-PICKLE-004", "Unsafe serialization format", "Medium", rel,
+				"ASSAY-PICKLE-004", "Unsafe serialization format", "Medium", rel,
 				"pickle-based weights execute arbitrary code on load; convert to safetensors"))
 		}
 	}
 
 	return findings, nil
+}
+
+// Opcodes that push a length-prefixed string, which STACK_GLOBAL then consumes
+// as its module and attribute operands.
+const (
+	opShortBinUnicode = 0x8c // 1-byte length
+	opBinUnicode      = 0x58 // 4-byte little-endian length
+	opStackGlobal     = 0x93
+)
+
+// referencesImport reports whether a pickle stream imports module.attr.
+//
+// Two encodings have to be covered, and missing the second one is the most
+// consequential gap this inspector could have:
+//
+//   - GLOBAL (protocols 0-3) writes the import inline as "module\nattr\n".
+//   - STACK_GLOBAL (protocols 4-5) pushes module and attr as two separate
+//     length-prefixed strings and combines them from the stack, so the
+//     "module\nattr\n" sequence never appears anywhere in the file.
+//
+// Python's DEFAULT_PROTOCOL has been 5 since 3.8, so a plain pickle.dumps of a
+// malicious __reduce__ takes the second path. Matching only the first would let
+// the ordinary case through as a generic "risky opcodes" warning.
+func referencesImport(data []byte, module, attr string) bool {
+	// GLOBAL form.
+	if bytes.Contains(data, []byte(module+"\n"+attr+"\n")) {
+		return true
+	}
+
+	// STACK_GLOBAL form. Require the opcode itself as well as both operands,
+	// so an unrelated file that merely contains the words "posix" and "system"
+	// is not reported as executing code.
+	if bytes.IndexByte(data, opStackGlobal) < 0 {
+		return false
+	}
+	return containsPickleString(data, module) && containsPickleString(data, attr)
+}
+
+// containsPickleString reports whether s appears as a length-prefixed pickle
+// string, under either the short (1-byte length) or long (4-byte) encoding.
+func containsPickleString(data []byte, s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	if len(s) < 256 {
+		short := append([]byte{opShortBinUnicode, byte(len(s))}, s...)
+		if bytes.Contains(data, short) {
+			return true
+		}
+	}
+	long := make([]byte, 5, 5+len(s))
+	long[0] = opBinUnicode
+	binary.LittleEndian.PutUint32(long[1:], uint32(len(s)))
+	return bytes.Contains(data, append(long, s...))
 }
 
 // inspectZip walks a zip archive looking for path traversal, zip bombs, and
@@ -290,7 +342,7 @@ func inspectZip(path, rel string, limits Limits) ([]securityv1alpha1.Finding, er
 	zr, err := zip.OpenReader(path)
 	if err != nil {
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-ARCHIVE-001", "Malformed archive", "Medium", rel,
+			"ASSAY-ARCHIVE-001", "Malformed archive", "Medium", rel,
 			fmt.Sprintf("could not open archive: %v", err))}, nil
 	}
 	defer zr.Close()
@@ -306,20 +358,20 @@ func inspectZip(path, rel string, limits Limits) ([]securityv1alpha1.Finding, er
 		entries++
 		if entries > limits.MaxArchiveEntries {
 			findings = append(findings, finding(
-				"ZEUS-ARCHIVE-002", "Archive entry limit exceeded", "High", rel,
+				"ASSAY-ARCHIVE-002", "Archive entry limit exceeded", "High", rel,
 				fmt.Sprintf("archive holds more than %d entries; possible archive bomb", limits.MaxArchiveEntries)))
 			break
 		}
 
 		if isTraversalPath(file.Name) {
 			findings = append(findings, finding(
-				"ZEUS-ARCHIVE-003", "Archive path traversal", "Critical", rel+"!"+file.Name,
+				"ASSAY-ARCHIVE-003", "Archive path traversal", "Critical", rel+"!"+file.Name,
 				"archive entry escapes the extraction directory (zip slip)"))
 			continue
 		}
 		if file.Mode()&os.ModeSymlink != 0 {
 			findings = append(findings, finding(
-				"ZEUS-ARCHIVE-004", "Symlink inside archive", "High", rel+"!"+file.Name,
+				"ASSAY-ARCHIVE-004", "Symlink inside archive", "High", rel+"!"+file.Name,
 				"archive contains a symlink, which can redirect writes outside the model directory"))
 			continue
 		}
@@ -328,7 +380,7 @@ func inspectZip(path, rel string, limits Limits) ([]securityv1alpha1.Finding, er
 		expanded += int64(file.UncompressedSize64)
 		if expanded > limits.MaxDecompressedBytes {
 			findings = append(findings, finding(
-				"ZEUS-ARCHIVE-005", "Decompression limit exceeded", "High", rel,
+				"ASSAY-ARCHIVE-005", "Decompression limit exceeded", "High", rel,
 				fmt.Sprintf("archive expands past %d bytes; possible zip bomb", limits.MaxDecompressedBytes)))
 			break
 		}
@@ -350,7 +402,7 @@ func inspectZip(path, rel string, limits Limits) ([]securityv1alpha1.Finding, er
 	if compressed > 0 && limits.CompressionRatioLimit > 0 {
 		if ratio := float64(expanded) / float64(compressed); ratio > limits.CompressionRatioLimit {
 			findings = append(findings, finding(
-				"ZEUS-ARCHIVE-006", "Suspicious compression ratio", "High", rel,
+				"ASSAY-ARCHIVE-006", "Suspicious compression ratio", "High", rel,
 				fmt.Sprintf("archive expands %.0fx, above the %.0fx threshold; possible zip bomb",
 					ratio, limits.CompressionRatioLimit)))
 		}
@@ -379,34 +431,34 @@ func inspectTar(path, rel string, limits Limits) ([]securityv1alpha1.Finding, er
 		}
 		if err != nil {
 			findings = append(findings, finding(
-				"ZEUS-ARCHIVE-001", "Malformed archive", "Medium", rel,
+				"ASSAY-ARCHIVE-001", "Malformed archive", "Medium", rel,
 				fmt.Sprintf("could not read tar entry: %v", err)))
 			break
 		}
 		entries++
 		if entries > limits.MaxArchiveEntries {
 			findings = append(findings, finding(
-				"ZEUS-ARCHIVE-002", "Archive entry limit exceeded", "High", rel,
+				"ASSAY-ARCHIVE-002", "Archive entry limit exceeded", "High", rel,
 				fmt.Sprintf("archive holds more than %d entries", limits.MaxArchiveEntries)))
 			break
 		}
 		if isTraversalPath(hdr.Name) {
 			findings = append(findings, finding(
-				"ZEUS-ARCHIVE-003", "Archive path traversal", "Critical", rel+"!"+hdr.Name,
+				"ASSAY-ARCHIVE-003", "Archive path traversal", "Critical", rel+"!"+hdr.Name,
 				"tar entry escapes the extraction directory"))
 			continue
 		}
 		switch hdr.Typeflag {
 		case tar.TypeSymlink, tar.TypeLink:
 			findings = append(findings, finding(
-				"ZEUS-ARCHIVE-004", "Link inside archive", "High", rel+"!"+hdr.Name,
+				"ASSAY-ARCHIVE-004", "Link inside archive", "High", rel+"!"+hdr.Name,
 				fmt.Sprintf("archive contains a link to %s", hdr.Linkname)))
 			continue
 		}
 		total += hdr.Size
 		if total > limits.MaxDecompressedBytes {
 			findings = append(findings, finding(
-				"ZEUS-ARCHIVE-005", "Decompression limit exceeded", "High", rel,
+				"ASSAY-ARCHIVE-005", "Decompression limit exceeded", "High", rel,
 				"tar expands past the configured limit"))
 			break
 		}
@@ -459,7 +511,7 @@ func inspectNumpy(path, rel string) ([]securityv1alpha1.Finding, error) {
 	}
 	if headerLen <= 0 || headerLen > (1<<20) {
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-NPY-002", "Invalid numpy header length", "Medium", rel,
+			"ASSAY-NPY-002", "Invalid numpy header length", "Medium", rel,
 			fmt.Sprintf("declared header length %d is implausible", headerLen))}, nil
 	}
 
@@ -470,7 +522,7 @@ func inspectNumpy(path, rel string) ([]securityv1alpha1.Finding, error) {
 
 	if bytes.Contains(header, []byte("'|O'")) || bytes.Contains(header, []byte("'O'")) {
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-NPY-001", "Object-dtype numpy array", "High", rel,
+			"ASSAY-NPY-001", "Object-dtype numpy array", "High", rel,
 			"object arrays are stored as pickles, so numpy.load must unpickle them to read this file")}, nil
 	}
 	return nil, nil
@@ -497,14 +549,14 @@ func inspectONNX(path, rel string) ([]securityv1alpha1.Finding, error) {
 	for op, why := range suspiciousONNXOps {
 		if bytes.Contains(data, []byte(op)) {
 			findings = append(findings, finding(
-				"ZEUS-ONNX-001", "Suspicious ONNX operator", "High", rel,
+				"ASSAY-ONNX-001", "Suspicious ONNX operator", "High", rel,
 				fmt.Sprintf("graph references %s, which %s", op, why)))
 		}
 	}
 	if bytes.Contains(data, []byte("external_data")) || bytes.Contains(data, []byte("location")) {
 		if bytes.Contains(data, []byte("../")) {
 			findings = append(findings, finding(
-				"ZEUS-ONNX-002", "ONNX external data path traversal", "Critical", rel,
+				"ASSAY-ONNX-002", "ONNX external data path traversal", "Critical", rel,
 				"external tensor data reference escapes the model directory"))
 		}
 	}
@@ -516,19 +568,19 @@ var pythonDangerPatterns = []struct {
 	re                  *regexp.Regexp
 	why                 string
 }{
-	{"ZEUS-PY-001", "Python executes a shell command", "Critical",
+	{"ASSAY-PY-001", "Python executes a shell command", "Critical",
 		regexp.MustCompile(`(?m)\b(os\.system|os\.popen|subprocess\.(Popen|run|call|check_output))\s*\(`),
 		"model code shells out at import or load time"},
-	{"ZEUS-PY-002", "Python dynamic code execution", "High",
+	{"ASSAY-PY-002", "Python dynamic code execution", "High",
 		regexp.MustCompile(`(?m)\b(eval|exec|compile)\s*\(`),
 		"model code evaluates code built at runtime"},
-	{"ZEUS-PY-003", "Python network egress", "High",
+	{"ASSAY-PY-003", "Python network egress", "High",
 		regexp.MustCompile(`(?m)\b(requests\.(get|post)|urllib\.request\.urlopen|socket\.socket|httpx\.(get|post))\s*\(`),
 		"model code contacts the network, which can exfiltrate data or pull a second stage"},
-	{"ZEUS-PY-004", "Unsafe deserialization call", "High",
+	{"ASSAY-PY-004", "Unsafe deserialization call", "High",
 		regexp.MustCompile(`(?m)\b(pickle\.loads?|torch\.load|joblib\.load|dill\.loads?|yaml\.load)\s*\(`),
 		"deserialization call can execute arbitrary code"},
-	{"ZEUS-PY-005", "Base64-decoded payload", "Medium",
+	{"ASSAY-PY-005", "Base64-decoded payload", "Medium",
 		regexp.MustCompile(`(?m)base64\.b64decode\s*\(`),
 		"encoded payloads are commonly used to hide malicious code"},
 }
@@ -557,7 +609,7 @@ func inspectPython(path, rel string) ([]securityv1alpha1.Finding, error) {
 	// Custom CUDA/C++ extensions compile and load native code on import.
 	if bytes.Contains(data, []byte("torch.utils.cpp_extension")) || bytes.Contains(data, []byte("load_inline")) {
 		findings = append(findings, finding(
-			"ZEUS-PY-006", "Custom native extension", "High", rel,
+			"ASSAY-PY-006", "Custom native extension", "High", rel,
 			"model compiles and loads a custom CUDA/C++ extension at import time"))
 	}
 
@@ -584,13 +636,13 @@ func inspectJSONConfig(path, rel string) ([]securityv1alpha1.Finding, error) {
 	if v, ok := cfg["trust_remote_code"]; ok {
 		if enabled, _ := v.(bool); enabled {
 			findings = append(findings, finding(
-				"ZEUS-HF-001", "trust_remote_code is enabled", "Critical", rel,
+				"ASSAY-HF-001", "trust_remote_code is enabled", "Critical", rel,
 				"the model declares trust_remote_code, so loading it executes code shipped with the weights"))
 		}
 	}
 	if _, ok := cfg["auto_map"]; ok {
 		findings = append(findings, finding(
-			"ZEUS-HF-002", "Custom auto_map classes", "High", rel,
+			"ASSAY-HF-002", "Custom auto_map classes", "High", rel,
 			"auto_map points transformers at model-supplied Python classes, which run on load"))
 	}
 	return findings, nil
@@ -614,26 +666,26 @@ func inspectSafetensors(path, rel string) ([]securityv1alpha1.Finding, error) {
 	var headerLen uint64
 	if err := binary.Read(f, binary.LittleEndian, &headerLen); err != nil {
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-ST-001", "Malformed safetensors header", "Medium", rel,
+			"ASSAY-ST-001", "Malformed safetensors header", "Medium", rel,
 			"file is too short to contain a safetensors header")}, nil
 	}
 
 	if headerLen > uint64(info.Size()) || headerLen > (100<<20) {
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-ST-002", "Invalid safetensors header length", "High", rel,
+			"ASSAY-ST-002", "Invalid safetensors header length", "High", rel,
 			fmt.Sprintf("declared header length %d exceeds the file size %d", headerLen, info.Size()))}, nil
 	}
 
 	header := make([]byte, headerLen)
 	if _, err := io.ReadFull(f, header); err != nil {
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-ST-001", "Malformed safetensors header", "Medium", rel,
+			"ASSAY-ST-001", "Malformed safetensors header", "Medium", rel,
 			"header is truncated")}, nil
 	}
 	var parsed map[string]json.RawMessage
 	if err := json.Unmarshal(header, &parsed); err != nil {
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-ST-003", "Unparseable safetensors header", "Medium", rel,
+			"ASSAY-ST-003", "Unparseable safetensors header", "Medium", rel,
 			"header is not valid JSON")}, nil
 	}
 	return nil, nil
@@ -657,15 +709,15 @@ func sniffUnknown(path, rel string, limits Limits) ([]securityv1alpha1.Finding, 
 	switch {
 	case bytes.HasPrefix(head, []byte{0x7f, 'E', 'L', 'F'}):
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-BIN-001", "ELF executable in model artifact", "High", rel,
+			"ASSAY-BIN-001", "ELF executable in model artifact", "High", rel,
 			"artifact contains a native executable")}, nil
 	case bytes.HasPrefix(head, []byte{0x4d, 0x5a}):
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-BIN-002", "PE executable in model artifact", "High", rel,
+			"ASSAY-BIN-002", "PE executable in model artifact", "High", rel,
 			"artifact contains a Windows executable")}, nil
 	case bytes.HasPrefix(head, []byte{0xca, 0xfe, 0xba, 0xbe}), bytes.HasPrefix(head, []byte{0xcf, 0xfa, 0xed, 0xfe}):
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-BIN-003", "Mach-O executable in model artifact", "High", rel,
+			"ASSAY-BIN-003", "Mach-O executable in model artifact", "High", rel,
 			"artifact contains a native executable")}, nil
 	case bytes.HasPrefix(head, []byte{0x80}) && n > 1 && head[1] <= 5:
 		if _, err := f.Seek(0, io.SeekStart); err != nil {
@@ -678,7 +730,7 @@ func sniffUnknown(path, rel string, limits Limits) ([]securityv1alpha1.Finding, 
 		}
 		line, _ := bufio.NewReader(f).ReadString('\n')
 		return []securityv1alpha1.Finding{finding(
-			"ZEUS-SHELL-002", "Script with interpreter directive", "Medium", rel,
+			"ASSAY-SHELL-002", "Script with interpreter directive", "Medium", rel,
 			fmt.Sprintf("file begins with %q", strings.TrimSpace(line)))}, nil
 	}
 	return nil, nil

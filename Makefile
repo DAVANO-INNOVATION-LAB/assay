@@ -1,10 +1,10 @@
-IMG ?= quay.io/zeus-security/zeus-operator:0.1.0
-NAMESPACE ?= zeus-system
+IMG ?= quay.io/davano/assay-operator:0.1.0
+NAMESPACE ?= assay-system
 CONTROLLER_TOOLS_VERSION ?= v0.17.2
 
 # Must match scanners.DefaultRegistry and scanners.ImageTag in
 # internal/scanners/catalog.go.
-SCANNER_REGISTRY ?= quay.io/zeus-security
+SCANNER_REGISTRY ?= quay.io/davano
 SCANNER_TAG ?= 0.1.0
 
 LOCALBIN ?= $(shell pwd)/bin
@@ -17,7 +17,7 @@ all: build
 
 .PHONY: manifests
 manifests: controller-gen ## Generate CRDs and RBAC from kubebuilder markers.
-	$(CONTROLLER_GEN) crd rbac:roleName=zeus-manager-role paths=./... \
+	$(CONTROLLER_GEN) crd rbac:roleName=assay-manager-role paths=./... \
 		output:crd:artifacts:config=config/crd/bases \
 		output:rbac:artifacts:config=config/rbac
 
@@ -45,8 +45,8 @@ cover: test ## Show per-package coverage.
 
 .PHONY: build
 build: fmt vet ## Build both binaries.
-	go build -o bin/zeus-manager ./cmd/manager
-	go build -o bin/zeus-runner ./cmd/runner
+	go build -o bin/assay-manager ./cmd/manager
+	go build -o bin/assay-runner ./cmd/runner
 
 .PHONY: docker-build
 docker-build: ## Build the operator image.

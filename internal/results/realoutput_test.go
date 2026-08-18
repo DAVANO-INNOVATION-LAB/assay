@@ -3,7 +3,7 @@ package results
 import (
 	"testing"
 
-	"github.com/zeus-security/zeus-operator/internal/scanners"
+	"github.com/JUMP1ST/assay/internal/scanners"
 )
 
 // The fixtures in testdata/ are verbatim output from the real scanner images

@@ -6,7 +6,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/util/validation"
 
-	"github.com/zeus-security/zeus-operator/internal/registry"
+	"github.com/JUMP1ST/assay/internal/registry"
 )
 
 func TestModelReportNameIsDeterministic(t *testing.T) {

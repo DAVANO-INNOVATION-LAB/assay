@@ -16,18 +16,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
-	"github.com/zeus-security/zeus-operator/internal/controller"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	"github.com/JUMP1ST/assay/internal/controller"
 )
 
 // Annotations a workload uses to declare which model it serves. KServe
 // InferenceServices are read directly; anything else opts in with these.
 const (
-	AnnotationModel       = "security.zeus.io/model"
-	AnnotationVersion     = "security.zeus.io/model-version"
-	AnnotationEnvironment = "security.zeus.io/environment"
-	AnnotationPolicy      = "security.zeus.io/policy"
-	AnnotationSkip        = "security.zeus.io/skip-validation"
+	AnnotationModel       = "security.davano.io/model"
+	AnnotationVersion     = "security.davano.io/model-version"
+	AnnotationEnvironment = "security.davano.io/environment"
+	AnnotationPolicy      = "security.davano.io/policy"
+	AnnotationSkip        = "security.davano.io/skip-validation"
 )
 
 // ModelGate validates that any workload serving a registered model is backed
@@ -59,12 +59,12 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 	if strings.EqualFold(annotations[AnnotationSkip], "true") {
 		// Opting out is recorded in the response so it shows up in the audit
 		// log rather than passing silently.
-		return admission.Allowed("zeus validation explicitly skipped by annotation")
+		return admission.Allowed("assay validation explicitly skipped by annotation")
 	}
 
 	ref := extractModelRef(obj)
 	if ref.Model == "" {
-		return admission.Allowed("no model reference; nothing for zeus to validate")
+		return admission.Allowed("no model reference; nothing for assay to validate")
 	}
 
 	report := &securityv1alpha1.ModelSecurityReport{}
@@ -78,10 +78,10 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 		}
 		if g.RequireReport {
 			return admission.Denied(fmt.Sprintf(
-				"model %q version %q has not been scanned by Zeus; register it and wait for the scan to complete",
+				"model %q version %q has not been scanned by Assay; register it and wait for the scan to complete",
 				ref.Model, ref.Version))
 		}
-		return admission.Allowed(fmt.Sprintf("no Zeus security report for model %q version %q", ref.Model, ref.Version))
+		return admission.Allowed(fmt.Sprintf("no Assay security report for model %q version %q", ref.Model, ref.Version))
 	}
 
 	enforcement := g.enforcementFor(ctx, req.Namespace, annotations)
@@ -89,18 +89,18 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 	if decision := g.evaluate(report, ref); decision.deny {
 		switch enforcement {
 		case "Audit":
-			return admission.Allowed("zeus: " + decision.reason + " (audit mode)")
+			return admission.Allowed("assay: " + decision.reason + " (audit mode)")
 		case "Warn":
-			resp := admission.Allowed("zeus: admitted with warnings")
-			resp.Warnings = append(resp.Warnings, "zeus: "+decision.reason)
+			resp := admission.Allowed("assay: admitted with warnings")
+			resp.Warnings = append(resp.Warnings, "assay: "+decision.reason)
 			return resp
 		default:
-			return admission.Denied("zeus: " + decision.reason)
+			return admission.Denied("assay: " + decision.reason)
 		}
 	}
 
 	return admission.Allowed(fmt.Sprintf(
-		"zeus: model %q version %q approved (risk score %d)", ref.Model, ref.Version, report.Status.RiskScore))
+		"assay: model %q version %q approved (risk score %d)", ref.Model, ref.Version, report.Status.RiskScore))
 }
 
 type decision struct {

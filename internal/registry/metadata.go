@@ -4,22 +4,22 @@ import (
 	"fmt"
 	"time"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
 )
 
-// Property keys Zeus writes back into the Model Registry. They are namespaced
+// Property keys Assay writes back into the Model Registry. They are namespaced
 // so they never collide with user-defined properties.
 const (
-	PropVerdict      = "zeus.security/verdict"
-	PropRiskScore    = "zeus.security/risk-score"
-	PropMalware      = "zeus.security/malware"
-	PropSecrets      = "zeus.security/secrets"
-	PropCVECritical  = "zeus.security/cve-critical"
-	PropCVEHigh      = "zeus.security/cve-high"
-	PropSigned       = "zeus.security/signature-verified"
-	PropLastScan     = "zeus.security/last-scan"
-	PropReportRef    = "zeus.security/report"
-	PropScannerCount = "zeus.security/scanners-run"
+	PropVerdict      = "assay.security/verdict"
+	PropRiskScore    = "assay.security/risk-score"
+	PropMalware      = "assay.security/malware"
+	PropSecrets      = "assay.security/secrets"
+	PropCVECritical  = "assay.security/cve-critical"
+	PropCVEHigh      = "assay.security/cve-high"
+	PropSigned       = "assay.security/signature-verified"
+	PropLastScan     = "assay.security/last-scan"
+	PropReportRef    = "assay.security/report"
+	PropScannerCount = "assay.security/scanners-run"
 )
 
 // SummaryProperties renders a ModelSecurityReport as registry custom

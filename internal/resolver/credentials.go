@@ -11,7 +11,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/auth"
 )
 
-// dockerConfig is the subset of ~/.docker/config.json Zeus reads. Scan pods
+// dockerConfig is the subset of ~/.docker/config.json Assay reads. Scan pods
 // mount a pull secret at DOCKER_CONFIG so the resolver can reach private
 // registries, including the OpenShift integrated registry.
 type dockerConfig struct {

@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.2
-  name: promotionrequests.security.zeus.io
+  name: promotionrequests.security.davano.io
 spec:
-  group: security.zeus.io
+  group: security.davano.io
   names:
     kind: PromotionRequest
     listKind: PromotionRequestList

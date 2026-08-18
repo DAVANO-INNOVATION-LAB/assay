@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
-	"github.com/zeus-security/zeus-operator/internal/policy"
-	"github.com/zeus-security/zeus-operator/internal/results"
-	"github.com/zeus-security/zeus-operator/internal/scanners"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	"github.com/JUMP1ST/assay/internal/policy"
+	"github.com/JUMP1ST/assay/internal/results"
+	"github.com/JUMP1ST/assay/internal/scanners"
 )
 
 // realOutputs are verbatim reports from the scanner images in scanners/,

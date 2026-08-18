@@ -37,11 +37,11 @@ RUN dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.n
     rm -rf /var/cache/dnf
 
 COPY --from=dbfetcher /opt/clamav-db /opt/clamav-db
-COPY entrypoint.sh /usr/local/bin/zeus-scan
-RUN chmod 0755 /usr/local/bin/zeus-scan && chmod -R a+rX /opt/clamav-db
+COPY entrypoint.sh /usr/local/bin/assay-scan
+RUN chmod 0755 /usr/local/bin/assay-scan && chmod -R a+rX /opt/clamav-db
 
 ENV HOME=/tmp \
     TMPDIR=/tmp
 
 USER 65532:65532
-ENTRYPOINT ["/usr/local/bin/zeus-scan"]
+ENTRYPOINT ["/usr/local/bin/assay-scan"]

@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
-	"github.com/zeus-security/zeus-operator/internal/inspector"
-	"github.com/zeus-security/zeus-operator/internal/policy"
-	"github.com/zeus-security/zeus-operator/internal/results"
-	"github.com/zeus-security/zeus-operator/internal/scanners"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	"github.com/JUMP1ST/assay/internal/inspector"
+	"github.com/JUMP1ST/assay/internal/policy"
+	"github.com/JUMP1ST/assay/internal/results"
+	"github.com/JUMP1ST/assay/internal/scanners"
 )
 
 // runInspectorStage mirrors what the scan Job does: the inspector writes a
@@ -40,7 +40,7 @@ func runInspectorStage(t *testing.T, modelDir string) securityv1alpha1.ScannerRe
 		t.Fatal(err)
 	}
 
-	parsed, err := results.Parse(scanners.FormatZeus, out)
+	parsed, err := results.Parse(scanners.FormatAssay, out)
 	if err != nil {
 		t.Fatalf("parse inspector output: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestZipBombIsFlaggedNotExpanded(t *testing.T) {
 		}
 		found := false
 		for _, f := range report.Findings {
-			if f.ID == "ZEUS-ARCHIVE-006" || f.ID == "ZEUS-ARCHIVE-005" {
+			if f.ID == "ASSAY-ARCHIVE-006" || f.ID == "ASSAY-ARCHIVE-005" {
 				found = true
 			}
 		}

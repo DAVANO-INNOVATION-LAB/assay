@@ -16,8 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	securityv1alpha1 "github.com/zeus-security/zeus-operator/api/v1alpha1"
-	"github.com/zeus-security/zeus-operator/internal/registry"
+	securityv1alpha1 "github.com/JUMP1ST/assay/api/v1alpha1"
+	"github.com/JUMP1ST/assay/internal/registry"
 )
 
 // defaultPollInterval is how often the registry is polled when the connector
@@ -44,16 +44,16 @@ type RegistryClient interface {
 	PatchModelVersionProperties(ctx context.Context, versionID string, props map[string]registry.MetadataValue) error
 }
 
-// Annotations Zeus puts on ArtifactScans to correlate them with the registry.
+// Annotations Assay puts on ArtifactScans to correlate them with the registry.
 const (
-	AnnotationRegistryModelID   = "security.zeus.io/registry-model-id"
-	AnnotationRegistryVersionID = "security.zeus.io/registry-version-id"
-	AnnotationArtifactID        = "security.zeus.io/registry-artifact-id"
-	LabelConnector              = "security.zeus.io/connector"
+	AnnotationRegistryModelID   = "security.davano.io/registry-model-id"
+	AnnotationRegistryVersionID = "security.davano.io/registry-version-id"
+	AnnotationArtifactID        = "security.davano.io/registry-artifact-id"
+	LabelConnector              = "security.davano.io/connector"
 )
 
-// +kubebuilder:rbac:groups=security.zeus.io,resources=modelregistryconnectors,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=security.zeus.io,resources=modelregistryconnectors/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=security.davano.io,resources=modelregistryconnectors,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=security.davano.io,resources=modelregistryconnectors/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // Reconcile polls the registry once and requeues after the poll interval.
@@ -185,9 +185,9 @@ func (r *ModelRegistryConnectorReconciler) syncVersion(
 				Name:      scanName,
 				Namespace: connector.Namespace,
 				Labels: map[string]string{
-					LabelConnector:           connector.Name,
-					LabelManagedBy:           ManagerName,
-					"security.zeus.io/model": sanitizeLabel(model.Name),
+					LabelConnector:             connector.Name,
+					LabelManagedBy:             ManagerName,
+					"security.davano.io/model": sanitizeLabel(model.Name),
 				},
 				Annotations: map[string]string{
 					AnnotationRegistryModelID:   model.ID,

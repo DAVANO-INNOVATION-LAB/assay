@@ -14,11 +14,11 @@ RUN curl -fsSL -o /tmp/th.tar.gz \
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
 
 COPY --from=fetcher /usr/local/bin/trufflehog /usr/local/bin/trufflehog
-COPY entrypoint.sh /usr/local/bin/zeus-scan
-RUN chmod 0755 /usr/local/bin/zeus-scan
+COPY entrypoint.sh /usr/local/bin/assay-scan
+RUN chmod 0755 /usr/local/bin/assay-scan
 
 ENV HOME=/tmp \
     XDG_CACHE_HOME=/tmp/cache
 
 USER 65532:65532
-ENTRYPOINT ["/usr/local/bin/zeus-scan"]
+ENTRYPOINT ["/usr/local/bin/assay-scan"]
