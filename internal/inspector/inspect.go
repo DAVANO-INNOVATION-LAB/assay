@@ -269,9 +269,23 @@ func scanPickleStream(r io.Reader, rel string, declaredPickle bool) ([]securityv
 			}
 		}
 		if len(opcodes) > 0 {
+			// Low, not High. Every torch.save output contains REDUCE and
+			// GLOBAL — they are how pickle represents an object at all — so
+			// this fires on essentially every pickle-bearing model. Measured
+			// against the 25 most-downloaded models on the Hub it hit 92% of
+			// them, which is a finding that carries no information and trains
+			// people to ignore the scanner.
+			//
+			// The severity ladder that does discriminate:
+			//   PICKLE-001  Critical  imports a dangerous callable (os.system)
+			//   PICKLE-003  Low       is a pickle, with the usual opcodes
+			// The first is evidence of intent; this is evidence of a file
+			// format. Keep it visible, because converting to safetensors is
+			// real advice, but do not price it like an incident.
 			findings = append(findings, finding(
-				"ASSAY-PICKLE-003", "Pickle contains code-executing opcodes", "High", rel,
-				fmt.Sprintf("stream uses opcodes that can execute code (%s); prefer safetensors", strings.Join(dedupe(opcodes), ", "))))
+				"ASSAY-PICKLE-003", "Pickle-based weights execute code on load", "Low", rel,
+				fmt.Sprintf("stream uses the usual pickle opcodes (%s); this is inherent to the format, not a defect in this model — prefer safetensors, which cannot execute anything",
+					strings.Join(dedupe(opcodes), ", "))))
 		} else {
 			findings = append(findings, finding(
 				"ASSAY-PICKLE-004", "Unsafe serialization format", "Medium", rel,
