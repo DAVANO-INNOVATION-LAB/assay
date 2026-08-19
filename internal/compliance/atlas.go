@@ -170,12 +170,13 @@ var atlasTechniques = []Technique{
 	},
 	{
 		ID: "AML.T0018.003", Name: "Modify Prompt Construction Logic", Tactic: "AI Attack Staging",
-		Coverage:    CoveragePartial,
-		Findings:    []string{"ASSAY-GGUF"},
+		Coverage:    CoverageOutOfScope,
 		Mitigations: nil,
-		Rationale: "Chat templates, tokenizer settings and tool-call formatting can be read out of a " +
-			"GGUF header and surfaced. Calling them *modified* needs a baseline; without one this is " +
-			"heuristic flagging of suspicious template text, not detection of a change.",
+		Rationale: "Chat templates and tool-call formatting live in a GGUF header, and Assay does not " +
+			"read GGUF headers — it records the format as present and produces no finding about it. " +
+			"This was previously mapped to a finding ID that nothing emits, which claimed coverage " +
+			"that did not exist. Tessera does parse these (TESS-GGUF-010); until Assay consumes it, " +
+			"the honest answer here is no.",
 	},
 	{
 		ID: "AML.T0074", Name: "Masquerading", Tactic: "Defense Evasion",
