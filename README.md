@@ -80,6 +80,12 @@ yet is a run against a live OpenShift cluster with a real Model Registry.
 > Built for **linux/amd64 and linux/arm64**. A Docker Hub mirror at
 > `docker.io/davanolab` is planned; the manifests point at ghcr because that is
 > what exists.
+>
+> If a pull returns `401 Unauthorized`, the package is still private — GitHub
+> publishes container packages private by default regardless of the
+> repository's visibility, and there is no API to change it. An owner has to
+> flip each package to public under
+> [the organisation's packages](https://github.com/orgs/DAVANO-INNOVATION-LAB/packages).
 
 The one image carries all four binaries — the operator, the in-pod scan runner,
 the console API server and the standalone CLI — so an air-gapped cluster mirrors
