@@ -46,7 +46,7 @@ const DefaultRegistry = "docker.io/davanolab"
 
 // ImageTag pins the scanner image version. A security scanner must be
 // reproducible: :latest would silently change what a recorded verdict means.
-const ImageTag = "0.1.0"
+const ImageTag = "0.2.0"
 
 // Definition describes one scanner in the catalog.
 type Definition struct {

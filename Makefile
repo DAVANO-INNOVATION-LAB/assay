@@ -1,6 +1,6 @@
 REGISTRY ?= ghcr.io/davano-innovation-lab
 IMG ?= $(REGISTRY)/assay-operator:$(IMAGE_TAG)
-IMAGE_TAG ?= 0.1.0
+IMAGE_TAG ?= 0.2.0
 NAMESPACE ?= assay-system
 CONTROLLER_TOOLS_VERSION ?= v0.17.2
 

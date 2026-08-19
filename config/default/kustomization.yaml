@@ -32,4 +32,4 @@ labels:
 # it is patched in the overlays rather than here so the base stays literal.
 images:
   - name: ghcr.io/davano-innovation-lab/assay-operator
-    newTag: 0.1.0
+    newTag: 0.2.0
