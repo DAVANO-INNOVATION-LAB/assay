@@ -8,10 +8,27 @@ on:
       version:
         description: "Version to build (e.g. v0.2.0)"
         required: true
+      push_images:
+        description: "Push images (otherwise build and test only)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
   packages: write
+
+env:
+  # GitHub Container Registry, authenticated with the automatic GITHUB_TOKEN.
+  #
+  # This is not just convenience. A package pushed by Actions is linked to the
+  # repository that pushed it, which is what makes its visibility settable and
+  # what puts it on the repository page. A package pushed from a laptop is an
+  # orphan: it shows up in the org's package list with no repository, and the
+  # option to make it public is not offered.
+  # Lowercased deliberately: ghcr.io rejects an uppercase namespace, and the
+  # organisation name has capitals, so ${{ github.repository_owner }} used
+  # directly produces a push that fails on every tag.
+  REGISTRY: ghcr.io/davano-innovation-lab
 
 jobs:
   cli:
@@ -56,32 +73,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
       - name: Resolve version
         id: version
         run: echo "version=${{ github.event.inputs.version || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
-      # Docker Hub needs DOCKERHUB_USERNAME and DOCKERHUB_TOKEN as repository
-      # secrets (Settings > Secrets and variables > Actions). The token is an
-      # access token from hub.docker.com/settings/security, not the password.
-      - name: Log in to Docker Hub
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push operator image
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ startsWith(github.ref, 'refs/tags/') }}
+          push: ${{ startsWith(github.ref, 'refs/tags/') || github.event.inputs.push_images == 'true' }}
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
           tags: |
-            ${{ vars.IMAGE_NAMESPACE || 'docker.io/davanolab' }}/assay-operator:${{ steps.version.outputs.version }}
-            ${{ vars.IMAGE_NAMESPACE || 'docker.io/davanolab' }}/assay-operator:latest
+            ${{ env.REGISTRY }}/assay-operator:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/assay-operator:latest
           # A supply-chain tool should ship its own provenance and SBOM.
           provenance: mode=max
           sbom: true
@@ -96,22 +112,29 @@ jobs:
     # so a scan needs no egress.
     steps:
       - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
       - name: Resolve version
         id: version
         run: echo "version=${{ github.event.inputs.version || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
-      - name: Log in to Docker Hub
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build scanner images
+      # Built for this runner's architecture only, and loaded locally, so the
+      # smoke test below has something to run. A multi-arch manifest cannot
+      # live in the local image store — buildx writes it straight to the
+      # registry — so proving the scanners work has to happen before the
+      # multi-arch push, not after.
+      - name: Build scanner images for testing
         run: |
           make scanners \
-            REGISTRY="${{ vars.IMAGE_NAMESPACE || 'docker.io/davanolab' }}" \
+            REGISTRY="${{ env.REGISTRY }}" \
             IMAGE_TAG="${{ steps.version.outputs.version }}"
 
       - name: Verify they detect what they claim to
@@ -119,12 +142,12 @@ jobs:
         # shipping one, so the air-gapped smoke test gates the push.
         run: |
           make scanners-smoke \
-            REGISTRY="${{ vars.IMAGE_NAMESPACE || 'docker.io/davanolab' }}" \
+            REGISTRY="${{ env.REGISTRY }}" \
             IMAGE_TAG="${{ steps.version.outputs.version }}"
 
-      - name: Push scanner images
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Build and push scanner images for every platform
+        if: ${{ startsWith(github.ref, 'refs/tags/') || github.event.inputs.push_images == 'true' }}
         run: |
-          make scanners-push \
-            REGISTRY="${{ vars.IMAGE_NAMESPACE || 'docker.io/davanolab' }}" \
+          make scanners-buildx \
+            REGISTRY="${{ env.REGISTRY }}" \
             IMAGE_TAG="${{ steps.version.outputs.version }}"
