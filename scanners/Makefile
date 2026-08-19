@@ -4,7 +4,7 @@
 # artifact directory and the output file as its two positional arguments.
 # internal/scanners/catalog_test.go enforces that the operator agrees.
 
-REGISTRY ?= docker.io/davanolab
+REGISTRY ?= ghcr.io/davano-innovation-lab
 # Must match scanners.ImageTag in internal/scanners/catalog.go.
 TAG ?= 0.1.0
 PLATFORM ?= linux/amd64
@@ -29,8 +29,14 @@ build: $(addprefix build-,$(SCANNERS)) ## Build every scanner image.
 .PHONY: build-%
 build-%:
 	@echo "==> building $* ($(PLATFORM))"
-	$(CONTAINER_TOOL) build \
+	# --load is what puts the result in the local image store so the smoke
+	# test can `docker run` it. Without it this silently succeeds and leaves
+	# nothing runnable behind: buildx's container driver keeps the image in
+	# its own cache, and any CI that has run setup-buildx-action gets that
+	# driver by default even though the command still reads like `docker build`.
+	$(CONTAINER_TOOL) buildx build \
 		--platform $(PLATFORM) \
+		--load \
 		--build-arg TARGETARCH=$(TARGETARCH) \
 		--build-arg BAKE_DB=$(BAKE_DB) \
 		-t $(REGISTRY)/scanner-$*:$(TAG) \
