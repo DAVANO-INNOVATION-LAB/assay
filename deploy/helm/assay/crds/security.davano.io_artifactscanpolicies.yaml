@@ -70,6 +70,15 @@ spec:
                     description: BlockMalware quarantines on any malware finding.
                       Defaults to true.
                     type: boolean
+                  blockModelDrift:
+                    description: |-
+                      BlockModelDrift quarantines when the model's own declarations disagree
+                      with the weights they describe at High severity or above — a config
+                      advertising a parameter count, precision or architecture the tensors do
+                      not implement. Defaults to false: drift is frequently benign (a
+                      quantized re-upload carrying the original config is the common case),
+                      so it is surfaced by default and gated on request.
+                    type: boolean
                   blockSecrets:
                     description: BlockSecrets quarantines on any leaked-secret finding.
                       Defaults to true.
@@ -95,6 +104,14 @@ spec:
                   maxHighCVEs:
                     format: int32
                     type: integer
+                  requireAIBOM:
+                    description: |-
+                      RequireAIBOM demands a generated AI bill of materials — a description
+                      of the model itself — before approval. This is what the EU AI Act
+                      Annex XII, the CISA/G7 minimum elements and Korea's Framework Act each
+                      ask a provider to be able to produce, and it is satisfied by a
+                      different scanner from RequireSBOM.
+                    type: boolean
                   requireProvenance:
                     description: RequireProvenance demands verified provenance attestations.
                     type: boolean

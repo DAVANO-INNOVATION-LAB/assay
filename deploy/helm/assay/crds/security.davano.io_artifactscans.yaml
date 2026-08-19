@@ -113,6 +113,27 @@ spec:
                 items:
                   type: string
                 type: array
+              trigger:
+                description: "Trigger records why this scan exists. Without it every
+                  scan looks the\nsame afterwards, and \"was this model checked when
+                  it was registered, or\nonly when someone tried to deploy it, or
+                  has it been rechecked since\"\nbecomes unanswerable — which is most
+                  of what an auditor asks.\n\n\tRegistry  a model source published
+                  a version\n\tRuntime   a workload tried to deploy it\n\tPeriodic
+                  \ a scheduled recheck, e.g. after a CVE database refresh\n\tManual
+                  \   a person asked for it\n\tPipeline  CI asked for it"
+                enum:
+                - Registry
+                - Runtime
+                - Periodic
+                - Manual
+                - Pipeline
+                type: string
+              triggeredBy:
+                description: |-
+                  TriggeredBy identifies what caused it: a connector name, a workload, or
+                  a username. Paired with Trigger it answers "who asked, and why".
+                type: string
             required:
             - artifact
             type: object
@@ -195,6 +216,34 @@ spec:
                     completionTime:
                       format: date-time
                       type: string
+                    drift:
+                      description: |-
+                        Drift counts the subset of findings reporting that the artifact's own
+                        declarations disagree with its bytes — a config naming a precision the
+                        tensors do not carry, an index claiming shards that are not there.
+
+                        It is a separate count rather than a severity bucket because drift is
+                        gated separately: it is frequently benign (a quantized re-upload
+                        carrying its original config is the common case) and occasionally the
+                        only sign that an artifact is not what it claims to be. Folding it into
+                        Severities would make those two indistinguishable.
+                      properties:
+                        critical:
+                          format: int32
+                          type: integer
+                        high:
+                          format: int32
+                          type: integer
+                        low:
+                          format: int32
+                          type: integer
+                        medium:
+                          format: int32
+                          type: integer
+                        unknown:
+                          format: int32
+                          type: integer
+                      type: object
                     findings:
                       description: Findings is the total number of findings the scanner
                         reported.
@@ -202,6 +251,17 @@ spec:
                       type: integer
                     message:
                       type: string
+                    produced:
+                      description: |-
+                        Produced reports whether a scanner whose job is to emit a document
+                        actually emitted one. Nil means the question does not apply.
+
+                        A bill-of-materials scanner that runs over an artifact it cannot
+                        describe finds nothing and exits zero, which is byte-for-byte the same
+                        result as one that described a clean model. Without this field a policy
+                        requiring a bill of materials is satisfied by a scanner that produced
+                        none — the gate would read as enforced and enforce nothing.
+                      type: boolean
                     reportRef:
                       description: ReportRef names the ArtifactScanReport holding
                         detailed findings.

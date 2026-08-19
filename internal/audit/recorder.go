@@ -239,3 +239,36 @@ func DeploymentDecision(model, version, namespace, workload string, admitted boo
 		},
 	}
 }
+
+// PromotionDecision builds the record for a promotion request that reached a
+// terminal state.
+//
+// The verdict the decision was taken against is carried in the detail rather
+// than left to be looked up later. A promotion is only defensible in relation
+// to what was known at the time, and the ModelSecurityReport it referred to is
+// mutable — by the time anyone reads this record, the verdict it names may no
+// longer be the one the model has.
+func PromotionDecision(model, version, environment, phase, decidedBy, verdict, why string) Record {
+	t := EventModelPromoted
+	if phase != "Approved" {
+		t = EventPromotionRefused
+	}
+	actor := decidedBy
+	if actor == "" {
+		// Nobody decided: the security verdict did. Recording "system" here
+		// rather than an empty actor keeps the distinction legible.
+		actor = "system"
+	}
+	return Record{
+		Time:    time.Now().UTC(),
+		Type:    t,
+		Subject: Subject(model, version),
+		Actor:   actor,
+		Detail: map[string]string{
+			"environment": environment,
+			"phase":       phase,
+			"verdict":     verdict,
+			"reason":      why,
+		},
+	}
+}
