@@ -92,7 +92,17 @@ func (r *ModelRegistryConnectorReconciler) syncSource(
 		getErr := r.Get(ctx, client.ObjectKey{Name: name, Namespace: connector.Namespace}, &existing)
 		switch {
 		case getErr == nil:
-			due, why := rescanDue(&existing, connector.Spec.RescanInterval)
+			// Age the interval against the most recent scan of this version,
+			// not the first one. The original keeps its completion time
+			// forever, so comparing against it means that once it passes the
+			// interval every poll finds a rescan due — one new scan and one new
+			// Job per poll, indefinitely.
+			latest, err := r.latestScanFor(ctx, connector, v)
+			if err != nil {
+				failures++
+				continue
+			}
+			due, why := rescanDue(latest, connector.Spec.RescanInterval)
 			if !due {
 				continue
 			}
@@ -192,9 +202,76 @@ func (r *ModelRegistryConnectorReconciler) writeVerdictBack(
 	})
 }
 
+// latestScanFor returns the most recently finished scan for a model version.
+//
+// Rescans are recorded under new names so earlier verdicts stay on the record,
+// which means "when was this last checked" cannot be answered by looking at any
+// single object.
+func (r *ModelRegistryConnectorReconciler) latestScanFor(
+	ctx context.Context,
+	connector *securityv1alpha1.ModelRegistryConnector,
+	v modelsource.Version,
+) (*securityv1alpha1.ArtifactScan, error) {
+	var list securityv1alpha1.ArtifactScanList
+	if err := r.List(ctx, &list,
+		client.InNamespace(connector.Namespace),
+		client.MatchingLabels{
+			LabelConnector:             connector.Name,
+			"security.davano.io/model": sanitizeLabel(v.ModelName),
+		}); err != nil {
+		return nil, err
+	}
+
+	var latest *securityv1alpha1.ArtifactScan
+	for i := range list.Items {
+		scan := &list.Items[i]
+		if scan.Spec.ModelVersion != v.Version {
+			continue
+		}
+		// A scan still running means the previous rescan has not finished, so
+		// there is nothing to age yet and starting another would pile up work.
+		if scan.Status.Phase != "Completed" && scan.Status.Phase != "Failed" {
+			return nil, nil
+		}
+		if latest == nil || finishedAfter(scan, latest) {
+			latest = scan
+		}
+	}
+	return latest, nil
+}
+
+// finishedAfter reports whether a finished later than b.
+func finishedAfter(a, b *securityv1alpha1.ArtifactScan) bool {
+	at, bt := finishTime(a), finishTime(b)
+	if at == nil {
+		return false
+	}
+	if bt == nil {
+		return true
+	}
+	return at.After(*bt)
+}
+
+func finishTime(scan *securityv1alpha1.ArtifactScan) *time.Time {
+	if scan.Status.CompletionTime != nil {
+		t := scan.Status.CompletionTime.Time
+		return &t
+	}
+	if scan.Status.StartTime != nil {
+		t := scan.Status.StartTime.Time
+		return &t
+	}
+	return nil
+}
+
 // rescanDue reports whether a completed scan is old enough to redo.
 func rescanDue(scan *securityv1alpha1.ArtifactScan, interval *metav1.Duration) (bool, string) {
 	if interval == nil || interval.Duration <= 0 {
+		return false, ""
+	}
+	// Nothing finished yet: either the first scan is still running, or a
+	// previous rescan is. Either way there is no age to measure.
+	if scan == nil {
 		return false, ""
 	}
 	// Only recheck something that finished. Rescanning a scan still in flight

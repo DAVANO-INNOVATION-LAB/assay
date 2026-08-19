@@ -53,7 +53,7 @@ spec:
                     app.kubernetes.io/component: controller
       containers:
         - name: manager
-          image: docker.io/davanolab/assay-operator:0.1.0
+          image: ghcr.io/davano-innovation-lab/assay-operator:0.1.0
           imagePullPolicy: IfNotPresent
           lifecycle:
             preStop:
@@ -67,7 +67,7 @@ spec:
             # Point this at a mirror for a disconnected cluster; the scanner
             # images carry their own vulnerability and signature databases, so
             # scans themselves need no egress.
-            - --scanner-registry=docker.io/davanolab
+            - --scanner-registry=ghcr.io/davano-innovation-lab
             # Phase 1 default: report on models with no scan rather than
             # blocking them, so installing Assay cannot break existing
             # deployments. Flip to true once coverage is complete.
@@ -76,7 +76,7 @@ spec:
             # The scan Jobs run this same image for their fetch and publish
             # steps, so the manager must know its own image reference.
             - name: ASSAY_OPERATOR_IMAGE
-              value: docker.io/davanolab/assay-operator:0.1.0
+              value: ghcr.io/davano-innovation-lab/assay-operator:0.1.0
             # Scans and their reports live here, while the workloads the gate
             # validates live in the teams' own namespaces. The gate needs to
             # know where to look or it finds nothing and admits everything.

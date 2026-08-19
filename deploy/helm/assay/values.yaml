@@ -1,7 +1,10 @@
 # Default values for Assay.
 
 image:
-  repository: docker.io/davanolab/assay-operator
+  # Published to GitHub Container Registry. A docker.io/davanolab mirror is
+  # planned; point this there once it exists, or at your own mirror for an
+  # air-gapped install.
+  repository: ghcr.io/davano-innovation-lab/assay-operator
   tag: ""          # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
   pullSecrets: []
@@ -58,7 +61,7 @@ operator:
   # Registry holding the scanner images. Point at a mirror for a disconnected
   # cluster; the scanner images carry their own databases, so scans need no
   # egress.
-  scannerRegistry: docker.io/davanolab
+  scannerRegistry: ghcr.io/davano-innovation-lab
 
   # Fail a scan that has not reached a verdict in this long. Without it, a scan
   # whose report never lands retries forever.
