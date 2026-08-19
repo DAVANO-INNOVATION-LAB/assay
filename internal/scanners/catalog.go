@@ -22,6 +22,13 @@ const (
 	CategoryLicense    Category = "license"
 	CategoryModel      Category = "model"
 	CategoryProvenance Category = "provenance"
+	// CategoryAIBOM is a bill of materials for the model itself — its
+	// parameters, precision, tensor shapes, licence and declared lineage —
+	// as distinct from CategorySBOM, which inventories the packages around
+	// it. They are kept apart because a policy can legitimately require one
+	// and not the other, and because a single field holding "the SBOM" would
+	// have to pick one of the two documents to point at.
+	CategoryAIBOM Category = "aibom"
 )
 
 // There is deliberately no behavioural / "AI safety" category. Prompt-injection
@@ -187,21 +194,22 @@ var catalog = map[string]Definition{
 	},
 	"tessera": {
 		Name:     "tessera",
-		Category: CategorySBOM,
-		Image:    "scanner-tessera",
-		// Reads the model's own binaries and reports where its declarations
-		// disagree with them — a config claiming one architecture while the
-		// tensors implement another, a card advertising a precision the weights
-		// do not carry. Distinct from syft, which inventories packages; this
-		// describes the model itself.
-		//
-		// Its findings already carry Assay's shape, so they need no translation:
-		// see github.com/DAVANO-INNOVATION-LAB/tessera.
-		Args:         []string{"inspect", "--json", PlaceholderWorkspace},
-		OutputFile:   "tessera.json",
-		ResultFormat: FormatAssay,
-		// No image is published yet; see scanners/.
-		Unbuilt: true,
+		Category: CategoryAIBOM,
+		// Runs in the operator image rather than a scanner image of its own.
+		// Tessera is a Go library with no third-party dependencies and no
+		// network access, so importing it adds nothing to the scan pod that
+		// shelling out to a separate container would have avoided — and it
+		// removes an image to build, publish, mirror and keep in step.
+		Image:   "",
+		Command: []string{"/assay-runner"},
+		Args: []string{"aibom",
+			"--workspace", PlaceholderWorkspace,
+			"--out", PlaceholderResults + "/tessera.json",
+			"--bom-dir", PlaceholderResults,
+		},
+		OutputFile:     "tessera.json",
+		ResultFormat:   FormatAssay,
+		DefaultEnabled: true,
 	},
 	"license": {
 		Name:         "license",

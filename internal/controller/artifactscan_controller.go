@@ -491,6 +491,7 @@ func (r *ArtifactScanReconciler) upsertModelSecurityReport(ctx context.Context, 
 	report.Status.Scanners = scan.Status.Results
 	report.Status.LastScanTime = &now
 	report.Status.SBOMRef = sbomRef(scan.Status.Results)
+	report.Status.AIBOMRef = refForCategory(scan.Status.Results, scanners.CategoryAIBOM)
 
 	condition := metav1.Condition{
 		Type:    "Approved",
@@ -571,8 +572,17 @@ func (r *ArtifactScanReconciler) fail(ctx context.Context, scan *securityv1alpha
 }
 
 func sbomRef(results []securityv1alpha1.ScannerResult) string {
+	return refForCategory(results, scanners.CategorySBOM)
+}
+
+// refForCategory finds the report holding a given category's output. The two
+// bill-of-materials categories are looked up separately because they describe
+// different things: one inventories the packages around a model, the other
+// describes the model. Handing a reader the wrong one is worse than handing
+// them nothing.
+func refForCategory(results []securityv1alpha1.ScannerResult, cat scanners.Category) string {
 	for _, r := range results {
-		if def, err := scanners.Get(r.Scanner); err == nil && def.Category == scanners.CategorySBOM {
+		if def, err := scanners.Get(r.Scanner); err == nil && def.Category == cat {
 			return r.ReportRef
 		}
 	}

@@ -63,6 +63,29 @@ type ScannerResult struct {
 	// +optional
 	Severities SeverityCounts `json:"severities,omitempty"`
 
+	// Drift counts the subset of findings reporting that the artifact's own
+	// declarations disagree with its bytes — a config naming a precision the
+	// tensors do not carry, an index claiming shards that are not there.
+	//
+	// It is a separate count rather than a severity bucket because drift is
+	// gated separately: it is frequently benign (a quantized re-upload
+	// carrying its original config is the common case) and occasionally the
+	// only sign that an artifact is not what it claims to be. Folding it into
+	// Severities would make those two indistinguishable.
+	// +optional
+	Drift SeverityCounts `json:"drift,omitempty"`
+
+	// Produced reports whether a scanner whose job is to emit a document
+	// actually emitted one. Nil means the question does not apply.
+	//
+	// A bill-of-materials scanner that runs over an artifact it cannot
+	// describe finds nothing and exits zero, which is byte-for-byte the same
+	// result as one that described a clean model. Without this field a policy
+	// requiring a bill of materials is satisfied by a scanner that produced
+	// none — the gate would read as enforced and enforce nothing.
+	// +optional
+	Produced *bool `json:"produced,omitempty"`
+
 	// +optional
 	Message string `json:"message,omitempty"`
 

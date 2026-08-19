@@ -229,6 +229,23 @@ func (r *ComplianceReconciler) updateProfileStatus(ctx context.Context, profile 
 // Everything here is gated on the scan having completed. A partial scan
 // evidences nothing: a scanner that never ran produced no findings, and that
 // is not the same as finding nothing.
+// aibomProduced reports whether a bill-of-materials scanner actually emitted a
+// description of the model. A scanner that ran over an artifact it could not
+// describe reports no findings and exits zero — the same shape as success —
+// so the question is asked of the scanner's own answer, not of whether it ran.
+func aibomProduced(results []securityv1alpha1.ScannerResult) bool {
+	for _, r := range results {
+		def, err := scanners.Get(r.Scanner)
+		if err != nil || def.Category != scanners.CategoryAIBOM {
+			continue
+		}
+		if r.Produced != nil && *r.Produced {
+			return true
+		}
+	}
+	return false
+}
+
 func buildEvidence(report *securityv1alpha1.ModelSecurityReport, exceptions []securityv1alpha1.ArtifactException, admissionEnforcing bool) compliance.Evidence {
 	status := report.Status
 
@@ -259,8 +276,13 @@ func buildEvidence(report *securityv1alpha1.ModelSecurityReport, exceptions []se
 		SecurityScanned: categoriesRun[scanners.CategoryMalware] &&
 			categoriesRun[scanners.CategoryCVE] &&
 			categoriesRun[scanners.CategoryModel],
-		SecretsScanned:    categoriesRun[scanners.CategorySecret],
-		SBOMGenerated:     status.SBOMRef != "" || categoriesRun[scanners.CategorySBOM],
+		SecretsScanned: categoriesRun[scanners.CategorySecret],
+		SBOMGenerated:  status.SBOMRef != "" || categoriesRun[scanners.CategorySBOM],
+		// Deliberately not "the scanner ran". A bill-of-materials scanner
+		// that examined an artifact it could not describe produces no
+		// document and no findings, and treating that as evidence would let
+		// a control be satisfied by an absence.
+		AIBOMGenerated:    aibomProduced(status.Scanners),
 		SignatureVerified: status.SignatureVerified,
 		PolicyRef:         report.Spec.ScanRef,
 		Inventoried:       status.LastScanTime != nil,

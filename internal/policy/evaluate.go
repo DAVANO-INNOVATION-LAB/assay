@@ -29,6 +29,16 @@ type Evaluation struct {
 	// archive escapes, code-executing configs. These are what distinguish a
 	// model scan from a container scan, so they carry their own weight.
 	ModelFindings securityv1alpha1.SeverityCounts
+	// AIBOMFindings are what the bill-of-materials pass observed about the
+	// model itself, including drift.
+	AIBOMFindings securityv1alpha1.SeverityCounts
+	// Drift counts findings where the artifact's declarations disagree with
+	// its bytes, summed across every scanner that reported any.
+	Drift securityv1alpha1.SeverityCounts
+	// AIBOMGenerated reports whether a bill of materials describing the model
+	// was actually produced. A scanner that ran and described nothing is not
+	// the same as one that described a clean model.
+	AIBOMGenerated bool
 	// MalwareStatus is Clean, Detected, or Unknown.
 	MalwareStatus string
 	// SecretsStatus is Clean, Detected, or Unknown.
@@ -62,6 +72,8 @@ const (
 	RuleBlockUnsafeModel  = "blockUnsafeModel"
 	RuleRequireSignature  = "requireSignature"
 	RuleRequireSBOM       = "requireSBOM"
+	RuleRequireAIBOM      = "requireAIBOM"
+	RuleBlockModelDrift   = "blockModelDrift"
 	RuleRequireProvenance = "requireProvenance"
 	RuleAllowedFormats    = "allowedFormats"
 	RuleBlockedFormats    = "blockedFormats"
@@ -92,7 +104,10 @@ func Evaluate(
 		SecretsStatus: statusFor(byCategory[scanners.CategorySecret]),
 		CVEs:          sumSeverities(byCategory[scanners.CategoryCVE]),
 		ModelFindings: sumSeverities(byCategory[scanners.CategoryModel]),
+		AIBOMFindings: sumSeverities(byCategory[scanners.CategoryAIBOM]),
+		Drift:         sumDrift(results),
 	}
+	eval.AIBOMGenerated = produced(byCategory[scanners.CategoryAIBOM])
 	eval.ProvenanceChecked = hasCategory(byCategory, scanners.CategoryProvenance)
 	eval.SignatureVerified = allPassed(byCategory[scanners.CategoryProvenance])
 
@@ -186,6 +201,37 @@ func Evaluate(
 			Rule:     RuleRequireSBOM,
 			Severity: "Medium",
 			Message:  "SBOM is required but was not generated",
+		})
+	}
+
+	// An AI bill of materials is a different document from an SBOM and is
+	// satisfied by a different scanner, so it needs its own rule. Requiring
+	// one and accepting the package SBOM in its place would let a policy
+	// claim a model was described when only its surroundings were.
+	if rules.RequireAIBOM && !eval.AIBOMGenerated {
+		message := "AI bill of materials is required but no scanner produced one"
+		if hasCategory(byCategory, scanners.CategoryAIBOM) {
+			message = "AI bill of materials is required; the scanner ran but described " +
+				"nothing, which is not the same as describing a clean model"
+		}
+		violations = append(violations, Violation{
+			Rule:     RuleRequireAIBOM,
+			Severity: "Medium",
+			Message:  message,
+		})
+	}
+
+	// Drift at High or above means the artifact's own declarations do not
+	// describe its weights. That is not a vulnerability and it is not malware;
+	// it is the artifact being something other than what it says it is, which
+	// is why it gets a rule of its own and is off by default.
+	if boolValue(rules.BlockModelDrift, false) && eval.Drift.Critical+eval.Drift.High > 0 {
+		violations = append(violations, Violation{
+			Rule:     RuleBlockModelDrift,
+			Severity: "High",
+			Message: fmt.Sprintf(
+				"%d finding(s) where the model's declarations disagree with its weights",
+				eval.Drift.Critical+eval.Drift.High),
 		})
 	}
 
@@ -393,6 +439,33 @@ func allPassed(results []securityv1alpha1.ScannerResult) bool {
 		}
 	}
 	return true
+}
+
+// sumDrift totals drift across every scanner rather than only the bill-of-
+// materials one. Drift is a property of the artifact, and if another scanner
+// ever learns to spot it the gate should count that too.
+func sumDrift(results []securityv1alpha1.ScannerResult) securityv1alpha1.SeverityCounts {
+	var total securityv1alpha1.SeverityCounts
+	for _, r := range results {
+		total.Critical += r.Drift.Critical
+		total.High += r.Drift.High
+		total.Medium += r.Drift.Medium
+		total.Low += r.Drift.Low
+		total.Unknown += r.Drift.Unknown
+	}
+	return total
+}
+
+// produced reports whether at least one scanner in the group emitted the
+// document it exists to emit. A scanner that does not answer the question at
+// all (Produced nil) cannot satisfy a rule that asks for a document.
+func produced(results []securityv1alpha1.ScannerResult) bool {
+	for _, r := range results {
+		if r.Produced != nil && *r.Produced {
+			return true
+		}
+	}
+	return false
 }
 
 func hasCategory(grouped map[scanners.Category][]securityv1alpha1.ScannerResult, cat scanners.Category) bool {
