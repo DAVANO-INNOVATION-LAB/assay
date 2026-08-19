@@ -150,7 +150,15 @@ type AuditSection struct {
 	// externally is what makes truncation detectable later.
 	Checkpoint *audit.Checkpoint `json:"checkpoint,omitempty"`
 	// ChainValid is the verification result at bundle time.
+	//
+	// An empty chain verifies vacuously, so this being true says nothing on
+	// its own about whether a trail exists. Present distinguishes the two.
 	ChainValid bool `json:"chainValid"`
+	// Present reports whether there is an audit trail for this subject at all.
+	// Without it, "audit: intact" over zero records reads as an assurance
+	// rather than as an absence, which is the misreading a reader of an
+	// evidence bundle is least able to check.
+	Present bool `json:"present"`
 	// ChainProblems records why, when it is not.
 	ChainProblems []string `json:"chainProblems,omitempty"`
 }
@@ -195,6 +203,7 @@ func Build(in Input) (*Bundle, error) {
 	verification := audit.Verify(in.AuditRecords, nil)
 	b.Audit.ChainValid = verification.Valid
 	b.Audit.ChainProblems = verification.Problems
+	b.Audit.Present = len(in.AuditRecords) > 0
 
 	digest, err := b.computeDigest()
 	if err != nil {
@@ -305,6 +314,15 @@ func Verify(b *Bundle) (Verification, error) {
 	chain := audit.Verify(b.Audit.Records, b.Audit.Checkpoint)
 	v.ChainValid = chain.Valid
 	v.Problems = append(v.Problems, chain.Problems...)
+
+	// An empty chain is internally consistent, so reporting only "intact"
+	// would let a bundle with no audit trail read like one with a clean trail.
+	// The bundle is still authentic; the reader just has less than they think.
+	if len(b.Audit.Records) == 0 {
+		v.Problems = append(v.Problems,
+			"there is no audit trail for this subject: the chain is vacuously intact because "+
+				"it is empty, not because decisions were recorded and verified")
+	}
 
 	// A bundle whose verdict rests on scanners that never ran is not invalid,
 	// but reading it as a clean bill of health would be a mistake.

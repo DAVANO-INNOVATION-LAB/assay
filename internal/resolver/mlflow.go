@@ -131,8 +131,18 @@ func (m *MLflowResolver) Resolve(ctx context.Context, uri, destDir string) (*Art
 		return nil, fmt.Errorf("no artifact bytes found at %s", uri)
 	}
 
+	// Digest the staged tree, as every other resolver does. Without it the
+	// verdict is bound to a URI rather than to bytes, so the admission gate's
+	// replay check has nothing to compare and an approval for one version of
+	// an MLflow artifact would admit whatever is published at that path next.
+	digest, _, err := treeDigest(destDir)
+	if err != nil {
+		return nil, fmt.Errorf("digest staged artifact: %w", err)
+	}
+
 	return &Artifact{
 		URI:       uri,
+		Digest:    digest,
 		MediaType: "application/vnd.mlflow.model",
 		LocalPath: destDir,
 		SizeBytes: total,

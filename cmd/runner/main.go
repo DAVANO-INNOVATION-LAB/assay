@@ -27,6 +27,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/audit"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/compliance"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/controller"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/evidence"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/inspector"
@@ -55,6 +57,8 @@ func main() {
 		err = runPublish(ctx, os.Args[2:])
 	case "verify-provenance":
 		err = runVerifyProvenance(os.Args[2:])
+	case "evidence":
+		err = runBuildEvidence(ctx, os.Args[2:])
 	case "verify-evidence":
 		err = runVerifyEvidence(os.Args[2:])
 	case "-h", "--help", "help":
@@ -80,6 +84,7 @@ Usage:
   assay-runner inspect --workspace DIR --out FILE
   assay-runner publish --scan NAME --namespace NS --scanner NAME --format FMT --results FILE [--metadata FILE]
   assay-runner verify-provenance --workspace DIR --out FILE
+  assay-runner evidence --scan NAME --namespace NS [--out FILE]
   assay-runner verify-evidence FILE
 
 verify-evidence exit codes: 0 the bundle is intact, 4 it is not, 1 it could not be read.
@@ -436,7 +441,11 @@ func runVerifyEvidence(args []string) error {
 		fmt.Printf("verdict:   %s (risk %d)\n", bundle.Verdict.Decision, bundle.Verdict.RiskScore)
 		fmt.Printf("produced:  %s by %s\n", bundle.GeneratedAt.Format(time.RFC3339), bundle.Producer)
 		fmt.Printf("digest:    %s\n", statusWord(result.DigestMatches, "unmodified", "MODIFIED"))
-		fmt.Printf("audit:     %s\n", statusWord(result.ChainValid, "intact", "BROKEN"))
+		auditState := statusWord(result.ChainValid, "intact", "BROKEN")
+		if len(bundle.Audit.Records) == 0 {
+			auditState = "none recorded"
+		}
+		fmt.Printf("audit:     %s (%d record(s))\n", auditState, len(bundle.Audit.Records))
 		fmt.Printf("coverage:  %d of %d scanners completed\n",
 			bundle.Coverage.ScannersCompleted, bundle.Coverage.ScannersRequested)
 
@@ -467,4 +476,145 @@ func statusWord(ok bool, yes, no string) string {
 		return yes
 	}
 	return no
+}
+
+// runBuildEvidence assembles an evidence bundle for one model version.
+//
+// It reads from the cluster and writes a file. That direction matters: the
+// bundle exists so somebody who cannot reach the cluster — an assessor, an
+// authorizing official, a customer's security team — can still check what was
+// decided and on what basis.
+func runBuildEvidence(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("evidence", flag.ExitOnError)
+	scanName := fs.String("scan", "", "ArtifactScan to build a bundle for")
+	namespace := fs.String("namespace", os.Getenv("POD_NAMESPACE"), "namespace of the scan")
+	out := fs.String("out", "", "write the bundle here; default stdout")
+	producer := fs.String("producer", "assay", "identifier recorded as the producer")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *scanName == "" || *namespace == "" {
+		return fmt.Errorf("--scan and --namespace are required")
+	}
+
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		return err
+	}
+	if err := securityv1alpha1.AddToScheme(scheme); err != nil {
+		return err
+	}
+	cfg, err := ctrl.GetConfig()
+	if err != nil {
+		return fmt.Errorf("load cluster config: %w", err)
+	}
+	k8s, err := client.New(cfg, client.Options{Scheme: scheme})
+	if err != nil {
+		return err
+	}
+
+	var scan securityv1alpha1.ArtifactScan
+	if err := k8s.Get(ctx, client.ObjectKey{Name: *scanName, Namespace: *namespace}, &scan); err != nil {
+		return fmt.Errorf("read scan: %w", err)
+	}
+
+	in := evidence.Input{
+		Now:      time.Now(),
+		Producer: *producer,
+		Subject: evidence.Subject{
+			Model: scan.Spec.ModelName, Version: scan.Spec.ModelVersion,
+			ArtifactURI: scan.Spec.Artifact.URI, ArtifactDigest: scan.Status.ScannedDigest,
+			Namespace: scan.Namespace,
+		},
+		Verdict: evidence.Verdict{
+			Decision: scan.Status.Verdict, Policy: scan.Spec.PolicyRef,
+			Trigger: scan.Spec.Trigger, TriggeredBy: scan.Spec.TriggeredBy,
+		},
+		Frameworks: []string{string(compliance.NISTAIRMF10), string(compliance.NIST80053R5)},
+	}
+	if scan.Status.RiskScore != nil {
+		in.Verdict.RiskScore = *scan.Status.RiskScore
+	}
+	if scan.Status.CompletionTime != nil {
+		in.Verdict.ScannedAt = scan.Status.CompletionTime.Time
+	}
+
+	// Every scanner the policy asked for, with whether it produced a result.
+	// A scanner that did not run is the difference between "found nothing" and
+	// "did not look", and the bundle has to carry it.
+	for _, res := range scan.Status.Results {
+		in.Scanners = append(in.Scanners, evidence.ScannerRun{
+			Name:      res.Scanner,
+			Completed: res.Status == "Passed" || res.Status == "Failed",
+			Findings:  int(res.Findings),
+			Message:   res.Message,
+		})
+	}
+
+	// The findings behind the verdict, not a summary of them.
+	var reports securityv1alpha1.ArtifactScanReportList
+	if err := k8s.List(ctx, &reports, client.InNamespace(*namespace)); err != nil {
+		return fmt.Errorf("list reports: %w", err)
+	}
+	for _, rep := range reports.Items {
+		if rep.ScanRef == scan.Name {
+			in.Findings = append(in.Findings, rep.Findings...)
+		}
+	}
+
+	// Risks a human took responsibility for, with whether the identity was
+	// established by the webhook or merely asserted.
+	var exceptions securityv1alpha1.ArtifactExceptionList
+	if err := k8s.List(ctx, &exceptions, client.InNamespace(*namespace)); err != nil {
+		return fmt.Errorf("list exceptions: %w", err)
+	}
+	for _, ex := range exceptions.Items {
+		if ex.Spec.ModelName != scan.Spec.ModelName || ex.Spec.ModelVersion != scan.Spec.ModelVersion {
+			continue
+		}
+		acc := evidence.Acceptance{
+			FindingIDs: ex.Spec.FindingIDs, Rules: ex.Spec.Rules,
+			Reason: ex.Spec.Reason, ApprovedBy: ex.Spec.ApprovedBy,
+			ScannedDigest: ex.Spec.ScannedDigest,
+			Signed:        ex.Spec.ApprovedBy != "" && ex.Spec.ApprovedAt != nil,
+		}
+		if ex.Spec.ApprovedAt != nil {
+			acc.ApprovedAt = ex.Spec.ApprovedAt.Time
+		}
+		if ex.Spec.ExpiresAt != nil {
+			t := ex.Spec.ExpiresAt.Time
+			acc.ExpiresAt = &t
+		}
+		in.Acceptances = append(in.Acceptances, acc)
+	}
+
+	// The audit chain, filtered to this subject, plus the checkpoint for the
+	// whole log — the checkpoint is what makes a truncated tail detectable, so
+	// it is included even though it covers more than this subject.
+	recorder := &audit.Recorder{Client: k8s, Namespace: *namespace}
+	if records, cp, err := recorder.Chain(ctx); err == nil {
+		subject := audit.Subject(scan.Spec.ModelName, scan.Spec.ModelVersion)
+		for _, rec := range records {
+			if rec.Subject == subject {
+				in.AuditRecords = append(in.AuditRecords, rec)
+			}
+		}
+		in.AuditCheckpoint = cp
+	}
+
+	bundle, err := evidence.Build(in)
+	if err != nil {
+		return err
+	}
+	encoded, err := json.MarshalIndent(bundle, "", "  ")
+	if err != nil {
+		return err
+	}
+	encoded = append(encoded, '\n')
+
+	if *out == "" {
+		_, err = os.Stdout.Write(encoded)
+		return err
+	}
+	return os.WriteFile(*out, encoded, 0o600)
 }

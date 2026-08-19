@@ -219,3 +219,50 @@ func TestFindingsSurviveIntoTheBundle(t *testing.T) {
 		t.Fatal("findings must be carried in the bundle, not summarised away")
 	}
 }
+
+// An empty chain verifies vacuously. Without saying so, a bundle carrying no
+// audit trail reads exactly like one carrying a clean trail — and a reader of
+// an evidence bundle is the person least able to check which they have.
+func TestEmptyAuditTrailIsNotReportedAsAssurance(t *testing.T) {
+	in := sampleInput()
+	in.AuditRecords = nil
+	in.AuditCheckpoint = nil
+
+	b, err := Build(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Audit.Present {
+		t.Fatal("there are no records, so Present must be false")
+	}
+	if !b.Audit.ChainValid {
+		t.Fatal("an empty chain is still internally consistent")
+	}
+
+	v, err := Verify(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(v.Problems, " ")
+	if !strings.Contains(joined, "no audit trail") {
+		t.Fatalf("verification must surface the absence, got %v", v.Problems)
+	}
+	// The bundle is still authentic — an absent trail is a caveat, not forgery.
+	if !v.DigestMatches {
+		t.Fatal("a missing audit trail must not be reported as tampering")
+	}
+}
+
+func TestPopulatedAuditTrailIsMarkedPresent(t *testing.T) {
+	b, err := Build(sampleInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !b.Audit.Present {
+		t.Fatal("the sample carries records, so Present must be true")
+	}
+	v, _ := Verify(b)
+	if strings.Contains(strings.Join(v.Problems, " "), "no audit trail") {
+		t.Fatal("a populated trail must not be reported as absent")
+	}
+}
