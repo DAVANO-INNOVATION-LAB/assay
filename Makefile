@@ -113,6 +113,10 @@ scanners: ## Build every scanner image with databases baked in.
 scanners-push:
 	$(MAKE) -C scanners push REGISTRY=$(SCANNER_REGISTRY) TAG=$(SCANNER_TAG)
 
+.PHONY: scanners-buildx
+scanners-buildx: ## Build and push every scanner image for amd64 and arm64.
+	$(MAKE) -C scanners buildx REGISTRY=$(SCANNER_REGISTRY) TAG=$(SCANNER_TAG)
+
 .PHONY: scanners-smoke
 scanners-smoke: ## Run the scanner images against a planted artifact, air-gapped.
 	$(MAKE) -C scanners smoke REGISTRY=$(SCANNER_REGISTRY) TAG=$(SCANNER_TAG)

@@ -1,0 +1,31 @@
+name: Bug
+description: Something is broken that is not a detection problem
+labels: ["needs-triage"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations: { required: true }
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+    validations: { required: true }
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output
+      description: Operator logs, scan status, or `kubectl describe` on the object.
+      render: shell
+  - type: input
+    id: env
+    attributes:
+      label: Version, and where it is running
+      placeholder: "0.1.0 on kind 1.31 / OpenShift 4.16"
+    validations: { required: true }
