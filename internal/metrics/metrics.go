@@ -30,6 +30,21 @@ const (
 )
 
 var (
+	// AuditWriteFailures counts admission decisions the gate could not append
+	// to the tamper-evident chain.
+	//
+	// A failed write never changes the decision — losing the paper trail must
+	// not turn a denial into an admission. The consequence is that the chain
+	// can fall silently behind reality, so any non-zero value here means the
+	// audit trail is incomplete for that namespace and cannot be read as one.
+	AuditWriteFailures = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "assay_audit_write_failures_total",
+			Help: "Admission decisions that could not be appended to the audit chain. Any non-zero value means the audit trail is incomplete.",
+		},
+		[]string{"namespace"},
+	)
+
 	// AdmissionDecisions counts what the gate did, by outcome.
 	//
 	// allowed_unscanned is the number that matters: it is how often a workload
@@ -116,5 +131,6 @@ func Register() {
 		ScannerResults,
 		SourceSyncFailures,
 		ModelsTracked,
+		AuditWriteFailures,
 	)
 }
