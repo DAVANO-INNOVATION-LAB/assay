@@ -96,7 +96,33 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 
 	ref := extractModelRef(obj)
 	if ref.Model == "" {
-		return admission.Allowed("no model reference; nothing for assay to validate")
+		// The workload did not declare a model. Before accepting that at face
+		// value, look at what it is actually configured to do: a Deployment
+		// mounting a claim of weights into a vLLM image is serving a model
+		// whether or not anybody annotated it.
+		evidence := discoverModelEvidence(obj)
+		if len(evidence) == 0 {
+			return admission.Allowed("no model reference and no sign this workload serves one")
+		}
+
+		ref = refFromEvidence(evidence)
+		if ref.Model == "" {
+			// Intent without identity. Saying "nothing to validate" here would
+			// be false, and it is the sentence an operator reads as assurance.
+			if g.RequireReport {
+				outcome = metrics.OutcomeDenied
+				return admission.Denied(fmt.Sprintf(
+					"this workload appears to serve a model (%s) and does not identify which one; "+
+						"annotate it with %s and %s, or set %s=true to accept the risk explicitly",
+					describeEvidence(evidence), AnnotationModel, AnnotationVersion, AnnotationSkip))
+			}
+			outcome = metrics.OutcomeAllowedUnidentified
+			resp := admission.Allowed("assay: model could not be identified")
+			resp.Warnings = append(resp.Warnings, fmt.Sprintf(
+				"assay: this workload appears to serve a model (%s) but does not identify which one, "+
+					"so no scan verdict was applied", describeEvidence(evidence)))
+			return resp
+		}
 	}
 
 	report, err := g.findReport(ctx, req.Namespace, ref)
