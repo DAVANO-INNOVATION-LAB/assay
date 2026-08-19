@@ -10,9 +10,11 @@ import (
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/audit"
 )
 
 // ExceptionSigner stamps an ArtifactException with the authenticated identity
@@ -29,6 +31,11 @@ import (
 // the attribution a property of the request rather than a claim in its body.
 type ExceptionSigner struct {
 	decoder admission.Decoder
+	// Recorder appends accepted risks to the tamper-evident decision log.
+	// Nil disables recording; the webhook still signs, because refusing an
+	// acceptance because the audit write failed would leave the reviewer
+	// unable to act at all.
+	Recorder *audit.Recorder
 }
 
 // Handle implements admission.Handler.
@@ -82,6 +89,13 @@ func (e *ExceptionSigner) Handle(ctx context.Context, req admission.Request) adm
 		signed.Spec.ApprovedAt = &now
 	}
 
+	// An accepted risk is the decision an audit most wants to see: a human
+	// overriding a policy that would otherwise have blocked something. It is
+	// recorded here rather than in a controller because this is the only place
+	// the authenticated identity exists — by the time the object is stored,
+	// the signature is a field and no longer a fact about the request.
+	e.record(ctx, signed, req.Operation)
+
 	patched, err := json.Marshal(signed)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError, err)
@@ -113,4 +127,26 @@ func (e *ExceptionSigner) SetupWithManager(mgr ctrl.Manager) error {
 	e.decoder = admission.NewDecoder(mgr.GetScheme())
 	mgr.GetWebhookServer().Register("/sign-exception", &admission.Webhook{Handler: e})
 	return nil
+}
+
+// record appends the acceptance to the audit chain.
+//
+// Best-effort by design. A failed audit write must not stop a reviewer from
+// accepting a risk: the acceptance is still attributable through the object
+// itself, and a gap in the chain is detectable, whereas a reviewer blocked
+// from recording a decision produces no record anywhere.
+func (e *ExceptionSigner) record(ctx context.Context, ex *securityv1alpha1.ArtifactException, op admissionv1.Operation) {
+	if e.Recorder == nil || op != admissionv1.Create {
+		return
+	}
+	rec := audit.RiskAccepted(
+		ex.Spec.ModelName, ex.Spec.ModelVersion,
+		ex.Spec.ApprovedBy, ex.Spec.Reason,
+		append(append([]string{}, ex.Spec.FindingIDs...), ex.Spec.Rules...),
+		ex.Spec.ScannedDigest,
+	)
+	if _, err := e.Recorder.Append(ctx, rec); err != nil {
+		log.FromContext(ctx).Error(err, "could not record the accepted risk in the audit log",
+			"model", ex.Spec.ModelName, "approvedBy", ex.Spec.ApprovedBy)
+	}
 }
