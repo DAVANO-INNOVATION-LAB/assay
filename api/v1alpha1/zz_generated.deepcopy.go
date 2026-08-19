@@ -1162,6 +1162,11 @@ func (in *PolicyRules) DeepCopyInto(out *PolicyRules) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.BlockModelDrift != nil {
+		in, out := &in.BlockModelDrift, &out.BlockModelDrift
+		*out = new(bool)
+		**out = **in
+	}
 	if in.AllowedFormats != nil {
 		in, out := &in.AllowedFormats, &out.AllowedFormats
 		*out = make([]string, len(*in))
@@ -1281,6 +1286,12 @@ func (in *PromotionRequestStatus) DeepCopy() *PromotionRequestStatus {
 func (in *ScannerResult) DeepCopyInto(out *ScannerResult) {
 	*out = *in
 	out.Severities = in.Severities
+	out.Drift = in.Drift
+	if in.Produced != nil {
+		in, out := &in.Produced, &out.Produced
+		*out = new(bool)
+		**out = **in
+	}
 	if in.CompletionTime != nil {
 		in, out := &in.CompletionTime, &out.CompletionTime
 		*out = (*in).DeepCopy()

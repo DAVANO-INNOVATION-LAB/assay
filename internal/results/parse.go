@@ -17,6 +17,14 @@ import (
 type Parsed struct {
 	Findings   []securityv1alpha1.Finding
 	Severities securityv1alpha1.SeverityCounts
+	// Drift counts the findings whose category marks them as a disagreement
+	// between what the artifact declares and what it contains. They are also
+	// counted in Severities; this is a view of the same findings, not a
+	// second set.
+	Drift securityv1alpha1.SeverityCounts
+	// Produced reports whether a document-producing scanner emitted one.
+	// Nil when the scanner does not produce a document.
+	Produced *bool
 }
 
 // maxFindings caps how many detailed findings are stored in a report. A
@@ -57,6 +65,10 @@ func Parse(format, path string) (*Parsed, error) {
 // assayReport is the native format Assay-authored scanners emit.
 type assayReport struct {
 	Findings []securityv1alpha1.Finding `json:"findings"`
+	// Generated is set by scanners that exist to emit a document. Absent for
+	// scanners that only report findings, which is why it is a pointer:
+	// "produced nothing" and "produces nothing" are different states.
+	Generated *bool `json:"generated,omitempty"`
 }
 
 func parseAssay(data []byte) (*Parsed, error) {
@@ -67,7 +79,9 @@ func parseAssay(data []byte) (*Parsed, error) {
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, fmt.Errorf("parse assay report: %w", err)
 	}
-	return finalize(report.Findings), nil
+	parsed := finalize(report.Findings)
+	parsed.Produced = report.Generated
+	return parsed, nil
 }
 
 // parseClamAV reads clamscan's human-readable output. Infected files are
@@ -296,23 +310,37 @@ func parseTrufflehog(data []byte) (*Parsed, error) {
 	return finalize(findings), nil
 }
 
+// CategoryDrift is the finding category that marks a disagreement between what
+// an artifact declares and what it contains. It is defined here as well as in
+// the scanner that produces it so the parser has no dependency on the scanner.
+const CategoryDrift = "drift"
+
+func count(into *securityv1alpha1.SeverityCounts, severity string) {
+	switch severity {
+	case "Critical":
+		into.Critical++
+	case "High":
+		into.High++
+	case "Medium":
+		into.Medium++
+	case "Low":
+		into.Low++
+	default:
+		into.Unknown++
+	}
+}
+
 // finalize counts severities across every finding, then truncates the
 // detailed list. Counts always reflect the full set.
 func finalize(findings []securityv1alpha1.Finding) *Parsed {
 	parsed := &Parsed{}
 	for i := range findings {
 		findings[i].Severity = normalizeSeverity(findings[i].Severity)
-		switch findings[i].Severity {
-		case "Critical":
-			parsed.Severities.Critical++
-		case "High":
-			parsed.Severities.High++
-		case "Medium":
-			parsed.Severities.Medium++
-		case "Low":
-			parsed.Severities.Low++
-		default:
-			parsed.Severities.Unknown++
+		count(&parsed.Severities, findings[i].Severity)
+		// Counted before truncation, like the severities, so a report that
+		// dropped detail still gates correctly.
+		if strings.EqualFold(findings[i].Category, CategoryDrift) {
+			count(&parsed.Drift, findings[i].Severity)
 		}
 	}
 
