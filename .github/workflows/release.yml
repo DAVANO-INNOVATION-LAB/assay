@@ -16,8 +16,20 @@ on:
 permissions:
   contents: write
   packages: write
+  # Required for keyless signing. Cosign exchanges this workflow's OIDC token
+  # for a short-lived Fulcio certificate, so there is no signing key to store,
+  # rotate or leak — the identity in the certificate is this repository and
+  # this workflow, which is a stronger claim than a key anybody could copy.
+  id-token: write
 
 env:
+  # The Docker Hub mirror. Both the manifests and the scanner catalog default
+  # to this namespace, so an install that never touched ghcr still resolves.
+  # Mirroring is skipped when the credentials are absent rather than failing
+  # the release: a fork has no Docker Hub account and should still be able to
+  # cut a build.
+  DOCKERHUB_NAMESPACE: davanolab
+
   # GitHub Container Registry, authenticated with the automatic GITHUB_TOKEN.
   #
   # This is not just convenience. A package pushed by Actions is linked to the
@@ -101,7 +113,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
       - name: Build and push operator image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -117,6 +133,66 @@ jobs:
           sbom: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # A supply-chain security tool that ships unsigned images is asking its
+      # users to do something it refuses to let their models do. Assay's own
+      # provenance scanner fails an artifact with no verified signature; these
+      # are the images that scanner runs in.
+      #
+      # Signed by digest rather than by tag, because a tag is a mutable pointer
+      # and signing one attests to whatever it happened to reference at the
+      # time. --recursive signs each platform's child manifest as well, so a
+      # verifier that resolved to a single architecture still finds a
+      # signature.
+      - name: Sign the operator image
+        if: ${{ startsWith(github.ref, 'refs/tags/') || github.event.inputs.push_images == 'true' }}
+        run: |
+          cosign sign --yes --recursive \
+            "${{ env.REGISTRY }}/assay-operator@${{ steps.build.outputs.digest }}"
+
+      # Verifying here rather than trusting the signing step to have worked.
+      # A release that silently produced no signature looks identical to one
+      # that did until somebody downstream tries to verify it.
+      - name: Verify the signature we just made
+        if: ${{ startsWith(github.ref, 'refs/tags/') || github.event.inputs.push_images == 'true' }}
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "${{ env.REGISTRY }}/assay-operator@${{ steps.build.outputs.digest }}" > /dev/null
+          echo "signature verified for ${{ steps.build.outputs.digest }}"
+
+      # Docker Hub is a mirror, not a second build: imagetools copies the
+      # manifest that was just signed, so both registries serve the same
+      # digests and one signature covers both.
+      - name: Check for Docker Hub credentials
+        id: mirror
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          if [ -n "$DOCKERHUB_TOKEN" ] && [ -n "$DOCKERHUB_USERNAME" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Docker Hub mirror skipped: set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN to enable it."
+          fi
+
+      - name: Log in to Docker Hub
+        if: ${{ steps.mirror.outputs.enabled == 'true' && (startsWith(github.ref, 'refs/tags/') || github.event.inputs.push_images == 'true') }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Mirror the operator image to Docker Hub
+        if: ${{ steps.mirror.outputs.enabled == 'true' && (startsWith(github.ref, 'refs/tags/') || github.event.inputs.push_images == 'true') }}
+        run: |
+          for tag in "${{ steps.version.outputs.image_tag }}" latest; do
+            docker buildx imagetools create \
+              --tag "docker.io/${{ env.DOCKERHUB_NAMESPACE }}/assay-operator:$tag" \
+              "${{ env.REGISTRY }}/assay-operator@${{ steps.build.outputs.digest }}"
+          done
 
   scanners:
     name: Scanner images
@@ -166,9 +242,64 @@ jobs:
             REGISTRY="${{ env.REGISTRY }}" \
             IMAGE_TAG="${{ steps.version.outputs.image_tag }}"
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
       - name: Build and push scanner images for every platform
         if: ${{ startsWith(github.ref, 'refs/tags/') || github.event.inputs.push_images == 'true' }}
         run: |
           make scanners-buildx \
             REGISTRY="${{ env.REGISTRY }}" \
             IMAGE_TAG="${{ steps.version.outputs.image_tag }}"
+
+      # The scanner images matter as much as the operator: they are what
+      # actually reads an untrusted model, and a substituted one produces a
+      # clean verdict on anything.
+      - name: Sign and verify the scanner images
+        if: ${{ startsWith(github.ref, 'refs/tags/') || github.event.inputs.push_images == 'true' }}
+        run: |
+          set -euo pipefail
+          for image in scanner-clamav scanner-trivy scanner-grype scanner-syft scanner-trufflehog; do
+            ref="${{ env.REGISTRY }}/$image:${{ steps.version.outputs.image_tag }}"
+            # Resolve the tag to a digest once, and sign and verify that, so
+            # neither operation can land on a different manifest than the other.
+            # The digest of an OCI manifest is the sha256 of its raw bytes, so
+            # this needs no template language and no jq.
+            digest="sha256:$(docker buildx imagetools inspect --raw "$ref" | sha256sum | cut -d" " -f1)"
+            cosign sign --yes --recursive "${{ env.REGISTRY }}/$image@$digest"
+            cosign verify \
+              --certificate-identity-regexp "^https://github.com/${{ github.repository }}/" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "${{ env.REGISTRY }}/$image@$digest" > /dev/null
+            echo "signed and verified $image@$digest"
+          done
+
+      - name: Check for Docker Hub credentials
+        id: mirror
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          if [ -n "$DOCKERHUB_TOKEN" ] && [ -n "$DOCKERHUB_USERNAME" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Docker Hub mirror skipped: set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN to enable it."
+          fi
+
+      - name: Log in to Docker Hub
+        if: ${{ steps.mirror.outputs.enabled == 'true' && (startsWith(github.ref, 'refs/tags/') || github.event.inputs.push_images == 'true') }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Mirror the scanner images to Docker Hub
+        if: ${{ steps.mirror.outputs.enabled == 'true' && (startsWith(github.ref, 'refs/tags/') || github.event.inputs.push_images == 'true') }}
+        run: |
+          set -euo pipefail
+          for image in scanner-clamav scanner-trivy scanner-grype scanner-syft scanner-trufflehog; do
+            docker buildx imagetools create \
+              --tag "docker.io/${{ env.DOCKERHUB_NAMESPACE }}/$image:${{ steps.version.outputs.image_tag }}" \
+              "${{ env.REGISTRY }}/$image:${{ steps.version.outputs.image_tag }}"
+          done
