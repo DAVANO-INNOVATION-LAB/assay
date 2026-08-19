@@ -21,6 +21,11 @@ something other than what it says it is. `blockModelDrift` gates on it, off by
 default — a quantized re-upload carrying its original config is the common
 case, and a scanner that quarantines the common case gets switched off.
 
+Pinned to Tessera v0.3.0, so the documents also carry **SHA-512** and the
+**BSI TR-03183-2** component properties (`executable`, `archive`, `structured`,
+`filename`) — the specification an assessor works from while the Cyber
+Resilience Act's own format implementing act remains unadopted.
+
 `requireAIBOM` is **not** satisfied by the scanner having run. A
 bill-of-materials scanner that examines an artifact it cannot describe finds
 nothing and exits zero, which is byte-for-byte the result of describing a clean
