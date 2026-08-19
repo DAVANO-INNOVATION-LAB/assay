@@ -181,12 +181,20 @@ func main() {
 			setupLog.Info("WARNING: --report-namespace is unset and POD_NAMESPACE is empty; " +
 				"the admission gate will only find reports that share a namespace with the workload")
 		}
-		if err := (&assaywebhook.ModelGate{
+		gate := &assaywebhook.ModelGate{
 			Client:          mgr.GetClient(),
 			DefaultPolicy:   defaultPolicy,
 			RequireReport:   requireReport,
 			ReportNamespace: reportNamespace,
-		}).SetupWithManager(mgr); err != nil {
+		}
+		// The chain records the admissions that cannot be reconstructed from
+		// the rest of the trail: every denial, and every admission that
+		// happened despite something. Without a namespace to write to there
+		// is nowhere to put them, and the gate still gates.
+		if auditNamespace != "" {
+			gate.Recorder = &audit.Recorder{Client: mgr.GetClient(), Namespace: auditNamespace}
+		}
+		if err := gate.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to set up admission webhook")
 			os.Exit(1)
 		}
