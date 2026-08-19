@@ -49,6 +49,21 @@ type PolicyRules struct {
 	// RequireSBOM demands a generated SBOM before approval.
 	// +optional
 	RequireSBOM bool `json:"requireSBOM,omitempty"`
+	// RequireAIBOM demands a generated AI bill of materials — a description
+	// of the model itself — before approval. This is what the EU AI Act
+	// Annex XII, the CISA/G7 minimum elements and Korea's Framework Act each
+	// ask a provider to be able to produce, and it is satisfied by a
+	// different scanner from RequireSBOM.
+	// +optional
+	RequireAIBOM bool `json:"requireAIBOM,omitempty"`
+	// BlockModelDrift quarantines when the model's own declarations disagree
+	// with the weights they describe at High severity or above — a config
+	// advertising a parameter count, precision or architecture the tensors do
+	// not implement. Defaults to false: drift is frequently benign (a
+	// quantized re-upload carrying the original config is the common case),
+	// so it is surfaced by default and gated on request.
+	// +optional
+	BlockModelDrift *bool `json:"blockModelDrift,omitempty"`
 	// RequireProvenance demands verified provenance attestations.
 	// +optional
 	RequireProvenance bool `json:"requireProvenance,omitempty"`

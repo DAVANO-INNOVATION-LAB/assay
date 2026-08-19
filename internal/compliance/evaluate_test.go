@@ -17,6 +17,7 @@ func fullEvidence() Evidence {
 		SecurityScanned:         true,
 		SecretsScanned:          true,
 		SBOMGenerated:           true,
+		AIBOMGenerated:          true,
 		SignatureVerified:       true,
 		PolicyRef:               "production-baseline",
 		Inventoried:             true,
@@ -387,5 +388,48 @@ func TestControlsSortNumericallyNotLexically(t *testing.T) {
 func TestUnknownControlLookupErrors(t *testing.T) {
 	if _, err := NISTAIRMF().Get("GOVERN 9.9"); err == nil {
 		t.Fatal("lookup of a non-existent control succeeded")
+	}
+}
+
+// A package SBOM says nothing about the model, so it must not stand in for a
+// description of one. MAP 2.1 asks what task and method the system implements;
+// a list of Python wheels does not answer that, and before the model bill of
+// materials existed this control was being credited to an inventory entry that
+// recorded a file format.
+func TestPackageSBOMDoesNotSatisfyModelDescription(t *testing.T) {
+	ev := fullEvidence()
+	ev.AIBOMGenerated = false
+
+	assessment := Evaluate(NISTAIRMF(), ev, nil, Scope{}, time.Now())
+	r := resultFor(t, assessment, "MAP 2.1")
+	if r.Status == StatusSatisfied {
+		t.Fatal("MAP 2.1 must not be satisfied by a package SBOM alone")
+	}
+	var missing bool
+	for _, kind := range r.EvidenceMissing {
+		if kind == EvidenceAIBOM {
+			missing = true
+		}
+	}
+	if !missing {
+		t.Fatalf("the missing evidence should name the model bill of materials, got %v",
+			r.EvidenceMissing)
+	}
+}
+
+// The converse: a bill of materials describing the model must actually move
+// the control, or the evidence kind is decoration.
+func TestModelDescriptionSatisfiesTheControl(t *testing.T) {
+	assessment := Evaluate(NISTAIRMF(), fullEvidence(), nil, Scope{}, time.Now())
+	r := resultFor(t, assessment, "MAP 2.1")
+	// The control stays partial without an attestation — whether the declared
+	// task is the right one for the deployment is not something a scanner can
+	// see. What must change is that no evidence is outstanding.
+	if len(r.EvidenceMissing) != 0 {
+		t.Fatalf("with a model bill of materials nothing should be outstanding, got %v",
+			r.EvidenceMissing)
+	}
+	if r.Status != StatusPartiallySatisfied {
+		t.Fatalf("MAP 2.1 is partially automated, got %s", r.Status)
 	}
 }
