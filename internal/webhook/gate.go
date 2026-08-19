@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/audit"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/controller"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/metrics"
 )
@@ -44,6 +45,11 @@ type ModelGate struct {
 	// RequireReport rejects workloads that reference a model with no report
 	// at all. When false, unknown models are admitted with a warning.
 	RequireReport bool
+	// Recorder appends admission decisions to the tamper-evident audit chain.
+	// Nil disables recording, which is what a cluster running without the
+	// audit CRDs gets; the gate still gates.
+	Recorder *audit.Recorder
+
 	// ReportNamespace is where the scan pipeline writes its reports — normally
 	// the operator's own namespace.
 	//
@@ -70,16 +76,23 @@ func (g *ModelGate) lookupNamespaces(workloadNamespace string) []string {
 func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission.Response {
 	start := time.Now()
 	outcome := metrics.OutcomeAllowed
+	obj := &unstructured.Unstructured{}
+	var ref ModelRef
+	var reason string
+
+	// One exit point for the record, so a return path added later cannot skip
+	// it. That is the failure mode worth designing against here: an audit
+	// trail with a hole in it reads exactly like one without.
 	defer func() {
 		metrics.AdmissionDuration.Observe(time.Since(start).Seconds())
 		metrics.AdmissionDecisions.WithLabelValues(outcome, req.Namespace).Inc()
+		g.recordDecision(ctx, req, obj, ref, outcome, reason)
 	}()
 
 	if req.Operation == admissionv1.Delete {
 		return admission.Allowed("")
 	}
 
-	obj := &unstructured.Unstructured{}
 	if err := json.Unmarshal(req.Object.Raw, obj); err != nil {
 		outcome = metrics.OutcomeError
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("decode object: %w", err))
@@ -91,10 +104,12 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 		// log, and counted so a cluster quietly annotating its way around the
 		// gate is visible on a dashboard rather than only in the audit trail.
 		outcome = metrics.OutcomeAllowedSkipped
+		reason = "skip-validation annotation set on the workload"
+		ref = extractModelRef(obj)
 		return admission.Allowed("assay validation explicitly skipped by annotation")
 	}
 
-	ref := extractModelRef(obj)
+	ref = extractModelRef(obj)
 	if ref.Model == "" {
 		// The workload did not declare a model. Before accepting that at face
 		// value, look at what it is actually configured to do: a Deployment
@@ -109,6 +124,7 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 		if ref.Model == "" {
 			// Intent without identity. Saying "nothing to validate" here would
 			// be false, and it is the sentence an operator reads as assurance.
+			reason = "workload serves a model it does not identify: " + describeEvidence(evidence)
 			if g.RequireReport {
 				outcome = metrics.OutcomeDenied
 				return admission.Denied(fmt.Sprintf(
@@ -131,6 +147,7 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 		return admission.Errored(http.StatusInternalServerError, fmt.Errorf("look up security report: %w", err))
 	}
 	if report == nil {
+		reason = fmt.Sprintf("no security report for model %q version %q", ref.Model, ref.Version)
 		if g.RequireReport {
 			outcome = metrics.OutcomeDenied
 			return admission.Denied(fmt.Sprintf(
@@ -147,6 +164,7 @@ func (g *ModelGate) Handle(ctx context.Context, req admission.Request) admission
 	enforcement := g.enforcementFor(ctx, req.Namespace, annotations)
 
 	if decision := g.evaluate(report, ref); decision.deny {
+		reason = decision.reason
 		switch enforcement {
 		case "Audit":
 			outcome = metrics.OutcomeAllowedAudit
