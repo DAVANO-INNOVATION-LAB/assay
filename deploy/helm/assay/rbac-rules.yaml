@@ -2,6 +2,17 @@
 - apiGroups:
   - ""
   resources:
+  - configmaps
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - events
   verbs:
   - create
@@ -36,6 +47,7 @@
   - artifactexceptions
   - artifactscanpolicies
   - complianceprofiles
+  - trustedpublishers
   verbs:
   - get
   - list
@@ -63,6 +75,7 @@
   - compliancereports/status
   - modelregistryconnectors/status
   - modelsecurityreports/status
+  - promotionrequests/status
   verbs:
   - get
   - patch
@@ -70,9 +83,38 @@
 - apiGroups:
   - security.davano.io
   resources:
+  - auditcheckpoints
+  verbs:
+  - create
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - security.davano.io
+  resources:
+  - auditrecords
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+- apiGroups:
+  - security.davano.io
+  resources:
   - modelsecurityreports
   verbs:
   - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - security.davano.io
+  resources:
+  - promotionrequests
+  verbs:
   - get
   - list
   - patch
