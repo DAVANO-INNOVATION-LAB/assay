@@ -21,4 +21,14 @@ ENV HOME=/tmp \
     XDG_CACHE_HOME=/tmp/cache
 
 USER 65532:65532
+
+# OCI labels. The source label is what links a published package back to this
+# repository on GitHub — without it the package is an orphan in the org's
+# package list and cannot inherit the repository's visibility.
+LABEL org.opencontainers.image.source="https://github.com/DAVANO-INNOVATION-LAB/assay" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.vendor="Davano Innovation Lab" \
+      org.opencontainers.image.title="assay-scanner-trufflehog" \
+      org.opencontainers.image.description="TruffleHog secret scanner"
+
 ENTRYPOINT ["/usr/local/bin/assay-scan"]

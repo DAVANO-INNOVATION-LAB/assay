@@ -70,18 +70,15 @@ disabled. CI runs build, vet, lint, the race-enabled unit suite, a CLI
 end-to-end check, and the live MLflow scan on every push. What has not happened
 yet is a run against a live OpenShift cluster with a real Model Registry.
 
-> **Images.** The operator image is published to GitHub Container Registry:
+> **Images.** Published to GitHub Container Registry under
+> `ghcr.io/davano-innovation-lab`: the operator (`assay-operator:0.1.0`) and the
+> five scanner images (`scanner-clamav`, `scanner-trivy`, `scanner-grype`,
+> `scanner-syft`, `scanner-trufflehog`). Vulnerability databases are baked in,
+> because scan Jobs run with networking disabled and a scanner that phones home
+> fails on an air-gapped cluster.
 >
-> ```
-> ghcr.io/davano-innovation-lab/assay-operator:0.1.0
-> ```
->
-> A Docker Hub mirror at `docker.io/davanolab/assay-operator` is planned; until
-> it lands, point `--scanner-registry` and the Helm `image.repository` at ghcr.
-> The individual scanner images (clamav, trivy, grype, syft, trufflehog) are not
-> published yet — build them with `make scanners scanners-push
-> REGISTRY=<your-namespace>`, or run the `inspector-only` policy, which uses
-> only the built-in scanner and therefore needs no extra images.
+> Currently **linux/amd64 only**. A Docker Hub mirror at `docker.io/davanolab`
+> is planned; the manifests point at ghcr because that is what exists.
 
 The one image carries all four binaries — the operator, the in-pod scan runner,
 the console API server and the standalone CLI — so an air-gapped cluster mirrors
@@ -481,13 +478,30 @@ Requires Go 1.25+. `make manifests` regenerates CRDs and RBAC from the
 kubebuilder markers; `make generate` regenerates DeepCopy methods.
 `make test-mlflow` runs the live MLflow integration test (needs Docker).
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for what a good change looks like here —
+in particular the fail-closed rule, which is the one that matters most.
+
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md). Anything that makes
+Assay report an unsafe artifact as safe, or gets a model past the admission
+gate, goes to DAVANO@davano.net rather than a public issue.
+
+The limits are documented rather than implied. Weight-level model poisoning,
+training-data poisoning, runtime evasion and registry rug pulls are out of scope
+**by construction** — a scanner that inspects an artifact cannot observe them.
+The MITRE ATLAS mapping in `internal/compliance/atlas.go` lists them explicitly,
+with reasons, alongside what Assay does detect.
+
 ## Roadmap
 
 **Phase 1 (current)** — registry connector, scan orchestration, malware and
 CVE scanning, SBOM, admission gate.
 
-**Phase 2** — cosign/Sigstore verification against `TrustedPublisher`,
-promotion workflows, OpenShift console plugin.
+**Phase 2** — Sigstore verification against `TrustedPublisher` has landed
+(bundles, model-transparency manifests, and detached keys, with partial
+signature coverage reported as its own finding). Remaining: promotion
+workflows and an OpenShift console plugin.
 
 > **On "AI safety" evaluation.** Prompt-injection resistance, backdoor
 > detection, and adversarial robustness are open research problems, not

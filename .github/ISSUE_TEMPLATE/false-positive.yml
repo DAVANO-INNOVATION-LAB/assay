@@ -1,0 +1,29 @@
+name: False positive
+description: Assay flagged something that is actually fine
+labels: ["detection", "false-positive", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        False positives fail closed, so this is not urgent — but a scanner
+        nobody trusts gets switched off, so we do want to hear about it.
+  - type: textarea
+    id: finding
+    attributes:
+      label: The finding
+      description: ID, severity and message.
+      render: shell
+    validations: { required: true }
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it is benign
+      description: >-
+        What the flagged construct actually does. For a pickle finding, what the
+        opcodes are doing legitimately.
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Version or image digest
+    validations: { required: true }

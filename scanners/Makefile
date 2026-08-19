@@ -36,6 +36,25 @@ build-%:
 		-t $(REGISTRY)/scanner-$*:$(TAG) \
 		$*
 
+# Multi-arch. Building and pushing are one step because a manifest list cannot
+# be held in the local image store — buildx has to write it straight to the
+# registry. Each scanner's Dockerfile already selects the right upstream asset
+# from TARGETARCH, so this needs no per-scanner special casing.
+PLATFORMS ?= linux/amd64,linux/arm64
+
+.PHONY: buildx
+buildx: $(addprefix buildx-,$(SCANNERS)) ## Build and push every scanner for every platform.
+
+.PHONY: buildx-%
+buildx-%:
+	@echo "==> building $* ($(PLATFORMS))"
+	$(CONTAINER_TOOL) buildx build \
+		--platform $(PLATFORMS) \
+		--build-arg BAKE_DB=$(BAKE_DB) \
+		-t $(REGISTRY)/scanner-$*:$(TAG) \
+		--push \
+		$*
+
 .PHONY: push
 push: $(addprefix push-,$(SCANNERS)) ## Push every scanner image.
 
