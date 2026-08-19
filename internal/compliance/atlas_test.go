@@ -133,3 +133,30 @@ func TestCoverageSummaryIsHonest(t *testing.T) {
 		t.Fatal("the summary must name the ATLAS release it was built against")
 	}
 }
+
+// A mapping may only cite a finding ID the scanner actually emits. Claiming a
+// technique through an ID that nothing produces is the fail-open pattern
+// applied to compliance output: it reads as coverage and detects nothing.
+//
+// AML.T0018.003 cited "ASSAY-GGUF", which appeared in no scanner.
+func TestEveryCitedFindingPrefixCanActuallyBeEmitted(t *testing.T) {
+	// Prefixes the inspector and scanners genuinely produce, plus scanner
+	// names used as evidence markers.
+	emitted := map[string]bool{
+		"ASSAY-PICKLE": true, "ASSAY-COVERAGE": true, "ASSAY-PROV": true,
+		"ASSAY-FORMAT": true, "ASSAY-IO": true, "ASSAY-LINK": true,
+		"ASSAY-EXEC": true, "ASSAY-HF": true, "ASSAY-PY": true,
+		"ASSAY-ONNX": true, "ASSAY-ZIP": true, "ASSAY-ELF": true,
+		"clamav": true, "trivy": true, "grype": true, "syft": true,
+		"trufflehog": true, "model-inspector": true, "provenance": true,
+		"tessera": true,
+	}
+	for _, tech := range ATLASTechniques() {
+		for _, f := range tech.Findings {
+			if !emitted[f] {
+				t.Errorf("%s cites %q, which no scanner emits — that is a claim of coverage "+
+					"with nothing behind it", tech.ID, f)
+			}
+		}
+	}
+}

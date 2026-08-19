@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
@@ -659,7 +660,9 @@ func inspectJSONConfig(path, rel string) ([]securityv1alpha1.Finding, error) {
 		return nil, nil // not a config file we understand
 	}
 
-	var findings []securityv1alpha1.Finding
+	// Config-driven code execution: the hole in the safetensors defence.
+	findings := instantiationTargets(cfg, rel, nil)
+
 	if v, ok := cfg["trust_remote_code"]; ok {
 		if enabled, _ := v.(bool); enabled {
 			findings = append(findings, finding(
@@ -820,6 +823,16 @@ func executesOnLoad(rel string) bool {
 		".h5", ".keras", ".pb",
 		".npy", ".npz", ".msgpack", ".model":
 		return true
+
+	// Not deserialization, but both have documented load-time code paths, so
+	// an unreadable one cannot be waved through as a footnote either. ONNX
+	// resolves custom operator domains to native libraries; a GGUF chat
+	// template is rendered by a Jinja engine, which is CVE-2024-34359.
+	//
+	// safetensors stays absent from this list on purpose: it has no such path,
+	// which is the whole reason to prefer it.
+	case ".onnx", ".gguf", ".ggml":
+		return true
 	}
 	return false
 }
@@ -882,4 +895,82 @@ func dedupe(items []string) []string {
 		out = append(out, item)
 	}
 	return out
+}
+
+// instantiationTargets walks a config for keys that name a callable to import
+// and invoke at load time.
+//
+// This is the hole in the safetensors defence. A model can ship weights that
+// genuinely cannot execute anything and still achieve code execution through
+// its config, because Hydra's instantiate() imports whatever "_target_" names
+// and calls it. The weights are irrelevant; the config is the payload.
+//
+// Documented in the wild: CVE-2025-23304 (NVIDIA NeMo, model_config.yaml),
+// CVE-2026-22584 (Salesforce Uni2TS, safetensors plus config.json through
+// PyTorchModelHubMixin). Detecting it is one key lookup, which is a poor
+// trade to skip.
+func instantiationTargets(node any, rel string, path []string) []securityv1alpha1.Finding {
+	var out []securityv1alpha1.Finding
+
+	switch v := node.(type) {
+	case map[string]any:
+		for _, key := range instantiationKeys {
+			target, ok := v[key].(string)
+			if !ok || target == "" {
+				continue
+			}
+			where := rel
+			if len(path) > 0 {
+				where = rel + " at " + strings.Join(path, ".")
+			}
+			out = append(out, finding(
+				"ASSAY-CONFIG-001",
+				"Config names a callable to import and invoke on load",
+				severityForTarget(target), where,
+				fmt.Sprintf("%q resolves to %q, which a Hydra-style loader imports and calls. "+
+					"This executes before any weight is read, so a model shipping only "+
+					"safetensors can still run code through its configuration "+
+					"(CVE-2025-23304, CVE-2026-22584).", key, target)))
+		}
+		for _, key := range sortedKeys(v) {
+			out = append(out, instantiationTargets(v[key], rel, append(path, key))...)
+		}
+	case []any:
+		for i, item := range v {
+			out = append(out, instantiationTargets(item, rel, append(path, fmt.Sprint(i)))...)
+		}
+	}
+	return out
+}
+
+// instantiationKeys are the config keys that name an import path to call.
+var instantiationKeys = []string{"_target_", "target_", "_recursive_target_", "callable", "class_path"}
+
+// severityForTarget rates a target by what it resolves to.
+//
+// A target inside the model's own framework is how these loaders are meant to
+// work and is everywhere; one naming os, subprocess or builtins is not a
+// configuration choice.
+func severityForTarget(target string) string {
+	lower := strings.ToLower(target)
+	for _, dangerous := range []string{
+		"os.", "subprocess", "builtins", "eval", "exec", "commands",
+		"popen", "system", "pty", "socket", "importlib", "pickle", "runpy",
+	} {
+		if strings.HasPrefix(lower, dangerous) || strings.Contains(lower, "."+dangerous) {
+			return "Critical"
+		}
+	}
+	// Anything else still executes on load, which is worth surfacing even
+	// when the callable is a legitimate model class.
+	return "Low"
+}
+
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
