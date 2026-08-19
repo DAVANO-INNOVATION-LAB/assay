@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/audit"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/metrics"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/policy"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/scanners"
@@ -40,6 +41,11 @@ type ArtifactScanReconciler struct {
 	// RequireTransparencyLog demands an auditable log entry, not just a valid
 	// signature.
 	RequireTransparencyLog bool
+	// AuditNamespace is where the tamper-evident decision log is written.
+	// Empty disables recording, which also means the AU-9 control claim in
+	// internal/compliance has nothing behind it — so it is reported rather
+	// than silently skipped.
+	AuditNamespace string
 }
 
 // +kubebuilder:rbac:groups=security.davano.io,resources=artifactscans,verbs=get;list;watch;create;update;patch;delete
@@ -50,6 +56,8 @@ type ArtifactScanReconciler struct {
 // +kubebuilder:rbac:groups=security.davano.io,resources=modelsecurityreports,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups=security.davano.io,resources=modelsecurityreports/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=security.davano.io,resources=trustedpublishers,verbs=get;list;watch
+// +kubebuilder:rbac:groups=security.davano.io,resources=auditrecords,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups=security.davano.io,resources=auditcheckpoints,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
@@ -176,6 +184,12 @@ func (r *ArtifactScanReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if err := r.Status().Update(ctx, &scan); err != nil {
 		return ctrl.Result{}, err
 	}
+
+	// A verdict is a decision, and the decisions are what an audit asks about.
+	// Recording is best-effort on purpose: losing the audit entry must not
+	// also lose the verdict, and a chain with a gap is detectable while a
+	// scan that failed to complete is not.
+	r.recordVerdict(ctx, &scan, eval)
 
 	if err := r.upsertModelSecurityReport(ctx, &scan, eval); err != nil {
 		return ctrl.Result{}, err
@@ -603,4 +617,42 @@ func mapReportToScan(_ context.Context, obj client.Object) []reconcile.Request {
 	return []reconcile.Request{{
 		NamespacedName: client.ObjectKey{Name: report.ScanRef, Namespace: report.Namespace},
 	}}
+}
+
+// recordVerdict appends a verdict to the tamper-evident decision log.
+//
+// Failures are logged and swallowed. The alternative — failing the scan when
+// the audit write fails — would trade a recorded verdict for an unrecorded
+// one, which is the worse outcome: a missing link in the chain is visible to
+// anyone verifying it, whereas a scan that never finished leaves nothing at
+// all.
+func (r *ArtifactScanReconciler) recordVerdict(
+	ctx context.Context, scan *securityv1alpha1.ArtifactScan, eval policy.Evaluation,
+) {
+	if r.AuditNamespace == "" {
+		return
+	}
+	recorder := &audit.Recorder{Client: r.Client, Namespace: r.AuditNamespace}
+
+	// The measured digest, not the declared one. A verdict belongs to the
+	// bytes that were actually staged and scanned; recording what the spec
+	// claimed would let the audit trail agree with a URI rather than with
+	// content, which is the replay the admission gate exists to refuse.
+	digest := scan.Status.ScannedDigest
+	if digest == "" {
+		digest = scan.Spec.Artifact.Digest
+	}
+	rec := audit.VerdictIssued(scan.Spec.ModelName, scan.Spec.ModelVersion,
+		eval.Verdict, eval.RiskScore, digest)
+	// Why the scan ran changes what its verdict means, so it travels with it.
+	if scan.Spec.Trigger != "" {
+		rec.Detail["trigger"] = scan.Spec.Trigger
+	}
+	if scan.Spec.TriggeredBy != "" {
+		rec.Detail["triggeredBy"] = scan.Spec.TriggeredBy
+	}
+	if _, err := recorder.Append(ctx, rec); err != nil {
+		log.FromContext(ctx).Error(err, "could not record the verdict in the audit log",
+			"scan", scan.Name, "verdict", eval.Verdict)
+	}
 }
