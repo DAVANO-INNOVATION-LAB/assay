@@ -88,6 +88,7 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Artifact resolvers | `internal/resolver` | HTTP and S3/ODF run end-to-end (S3 live-tested against MinIO); PVC mounted and covered; OCI/ModelCar compile but **untested against a real registry** |
 | Scan orchestrator | `internal/controller` | Working: one Job per scanner |
 | Model inspector | `internal/inspector` | Working: pickle, archive, format analysis |
+| AI bill of materials | `internal/aibom` | Working: CycloneDX 1.6 ML-BOM and SPDX 3.0.1 rendered in-process from the model's own headers, plus declared-vs-measured drift |
 | Result parsers | `internal/results` | Validated against real scanner output |
 | Policy engine | `internal/policy` | Working: rules, exceptions, risk scoring |
 | Admission gate | `internal/webhook` | Working: KServe, Deployments, Pods |

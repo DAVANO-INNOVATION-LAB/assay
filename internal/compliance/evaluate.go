@@ -80,6 +80,11 @@ type Evidence struct {
 	SecretsScanned bool
 	// SBOMGenerated reports that a bill of materials was produced.
 	SBOMGenerated bool
+	// AIBOMGenerated reports that a bill of materials describing the model
+	// itself was produced. A scanner that ran and described nothing does not
+	// set this, because a control asking for a description is not satisfied
+	// by an empty one.
+	AIBOMGenerated bool
 	// SignatureVerified reports provenance verification against a trusted
 	// publisher.
 	SignatureVerified bool
@@ -335,6 +340,7 @@ func observedEvidence(ev Evidence) map[EvidenceKind]bool {
 		EvidenceInventory:    ev.Inventoried,
 		EvidenceSecurityScan: ev.SecurityScanned,
 		EvidenceSBOM:         ev.SBOMGenerated,
+		EvidenceAIBOM:        ev.AIBOMGenerated,
 		EvidenceProvenance:   ev.SignatureVerified,
 		EvidenceSecrets:      ev.SecretsScanned,
 		EvidencePolicy:       ev.PolicyRef != "",

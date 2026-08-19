@@ -2,6 +2,7 @@
 //
 //	fetch    resolve an artifact URI and stage the bytes into the workspace
 //	inspect  run the built-in model-format scanner over the workspace
+//	aibom    describe the model itself and render its bill of materials
 //	publish  parse a scanner's output and record an ArtifactScanReport
 //
 // Keeping these in one binary means the scan pod only needs the Assay image
@@ -16,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -27,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/aibom"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/audit"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/compliance"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/controller"
@@ -57,6 +60,8 @@ func main() {
 		err = runPublish(ctx, os.Args[2:])
 	case "verify-provenance":
 		err = runVerifyProvenance(os.Args[2:])
+	case "aibom":
+		err = runAIBOM(ctx, os.Args[2:])
 	case "evidence":
 		err = runBuildEvidence(ctx, os.Args[2:])
 	case "verify-evidence":
@@ -84,6 +89,7 @@ Usage:
   assay-runner inspect --workspace DIR --out FILE
   assay-runner publish --scan NAME --namespace NS --scanner NAME --format FMT --results FILE [--metadata FILE]
   assay-runner verify-provenance --workspace DIR --out FILE
+  assay-runner aibom   --workspace DIR --out FILE [--bom-dir DIR]
   assay-runner evidence --scan NAME --namespace NS [--out FILE]
   assay-runner verify-evidence FILE
 
@@ -161,6 +167,54 @@ func runInspect(args []string) error {
 	// The inspector exits 0 even when it finds problems: the verdict is the
 	// controller's to make, and a non-zero exit would mark the Job failed and
 	// lose the findings.
+	return writeJSON(*out, report)
+}
+
+// runAIBOM is the AI bill of materials scanner's entry point.
+//
+// It reads the model's own headers and renders CycloneDX 1.6 and SPDX 3.0.1
+// alongside the findings, so the document and the risk assessment it belongs
+// with are produced by the same pass over the same bytes and cannot be
+// separated in transit.
+func runAIBOM(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("aibom", flag.ExitOnError)
+	workspace := fs.String("workspace", "/workspace", "staged artifact directory")
+	out := fs.String("out", "", "write the findings report here")
+	bomDir := fs.String("bom-dir", "", "write the rendered documents here")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *out == "" {
+		return fmt.Errorf("--out is required")
+	}
+
+	report, docs, err := aibom.Generate(ctx, *workspace, aibom.Options{})
+	if err != nil {
+		return err
+	}
+
+	if docs != nil && *bomDir != "" {
+		for name, body := range map[string][]byte{
+			"model.cdx.json":  docs.CycloneDX,
+			"model.spdx.json": docs.SPDX,
+		} {
+			path := filepath.Join(*bomDir, name)
+			if err := os.WriteFile(path, body, 0o644); err != nil {
+				return fmt.Errorf("write %s: %w", path, err)
+			}
+		}
+	}
+
+	if report.Generated {
+		fmt.Printf("described %s model at %s: %d files, %d tensors, %d findings\n",
+			report.Format, report.ModelPath, report.Files, report.TensorCount,
+			len(report.Findings))
+	} else {
+		fmt.Printf("no bill of materials produced: %d findings\n", len(report.Findings))
+	}
+
+	// As with inspect, a non-zero exit would mark the Job failed and lose the
+	// findings. The verdict belongs to the controller.
 	return writeJSON(*out, report)
 }
 
@@ -335,6 +389,8 @@ func runPublish(ctx context.Context, args []string) error {
 			Status:         status,
 			Findings:       parsed.Severities.Total(),
 			Severities:     parsed.Severities,
+			Drift:          parsed.Drift,
+			Produced:       parsed.Produced,
 			Message:        message,
 			CompletionTime: &now,
 		},

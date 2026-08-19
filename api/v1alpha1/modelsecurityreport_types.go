@@ -35,6 +35,13 @@ type ModelSecurityReportStatus struct {
 	// SBOMRef names the ArtifactScanReport containing the SBOM.
 	// +optional
 	SBOMRef string `json:"sbomRef,omitempty"`
+	// AIBOMRef names the ArtifactScanReport containing the AI bill of
+	// materials — the description of the model itself, as opposed to the
+	// packages around it. It is a separate field rather than a reuse of
+	// SBOMRef because the two documents describe different things and a
+	// reader asking for one must not be handed the other.
+	// +optional
+	AIBOMRef string `json:"aibomRef,omitempty"`
 	// +optional
 	SignatureVerified bool `json:"signatureVerified,omitempty"`
 	// +optional

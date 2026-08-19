@@ -357,3 +357,121 @@ func TestUnrecognisedScannerCannotProduceACleanVerdict(t *testing.T) {
 		t.Errorf("a clean result from a known scanner no longer passes: %s — %+v", clean.Verdict, clean.Violations)
 	}
 }
+
+func boolPtr(b bool) *bool { return &b }
+
+func aibomResult(produced bool, drift securityv1alpha1.SeverityCounts) securityv1alpha1.ScannerResult {
+	return securityv1alpha1.ScannerResult{
+		Scanner:    "tessera",
+		Status:     "Passed",
+		Findings:   drift.Total(),
+		Severities: drift,
+		Drift:      drift,
+		Produced:   boolPtr(produced),
+	}
+}
+
+// The failure this rule exists to prevent: a scanner that ran, described
+// nothing, and reported no findings looks exactly like one that described a
+// clean model. If requireAIBOM is satisfied by the scanner merely having run,
+// the gate reads as enforced and enforces nothing.
+func TestRequireAIBOMIsNotSatisfiedByAScannerThatDescribedNothing(t *testing.T) {
+	pol := &securityv1alpha1.ArtifactScanPolicy{
+		Spec: securityv1alpha1.ArtifactScanPolicySpec{
+			Rules: securityv1alpha1.PolicyRules{RequireAIBOM: true},
+		},
+	}
+	results := []securityv1alpha1.ScannerResult{aibomResult(false, securityv1alpha1.SeverityCounts{})}
+
+	eval := Evaluate(results, securityv1alpha1.ArtifactRef{}, pol, nil, time.Now())
+	if !hasRule(eval.Violations, RuleRequireAIBOM) {
+		t.Fatalf("a scanner that produced no bill of materials must fail requireAIBOM; got %v",
+			eval.Violations)
+	}
+}
+
+func TestRequireAIBOMPassesWhenOneWasProduced(t *testing.T) {
+	pol := &securityv1alpha1.ArtifactScanPolicy{
+		Spec: securityv1alpha1.ArtifactScanPolicySpec{
+			Rules: securityv1alpha1.PolicyRules{RequireAIBOM: true},
+		},
+	}
+	results := []securityv1alpha1.ScannerResult{aibomResult(true, securityv1alpha1.SeverityCounts{})}
+
+	eval := Evaluate(results, securityv1alpha1.ArtifactRef{}, pol, nil, time.Now())
+	if hasRule(eval.Violations, RuleRequireAIBOM) {
+		t.Fatalf("a produced bill of materials must satisfy the rule; got %v", eval.Violations)
+	}
+	if !eval.AIBOMGenerated {
+		t.Error("the evaluation should record that one was generated")
+	}
+}
+
+// A package SBOM is a different document produced by a different scanner.
+// Accepting it for requireAIBOM would let a policy claim the model was
+// described when only its surroundings were.
+func TestPackageSBOMDoesNotSatisfyRequireAIBOM(t *testing.T) {
+	pol := &securityv1alpha1.ArtifactScanPolicy{
+		Spec: securityv1alpha1.ArtifactScanPolicySpec{
+			Rules: securityv1alpha1.PolicyRules{RequireAIBOM: true},
+		},
+	}
+	results := []securityv1alpha1.ScannerResult{{Scanner: "syft", Status: "Passed"}}
+
+	eval := Evaluate(results, securityv1alpha1.ArtifactRef{}, pol, nil, time.Now())
+	if !hasRule(eval.Violations, RuleRequireAIBOM) {
+		t.Fatal("syft's package SBOM must not satisfy a rule asking for a model description")
+	}
+}
+
+// Drift is off by default: a quantized re-upload carrying its original config
+// is the common case, and a scanner that quarantines the common case gets
+// switched off. It must still be visible in the evaluation.
+func TestDriftIsSurfacedButNotGatedByDefault(t *testing.T) {
+	drift := securityv1alpha1.SeverityCounts{High: 2}
+	results := []securityv1alpha1.ScannerResult{aibomResult(true, drift)}
+
+	eval := Evaluate(results, securityv1alpha1.ArtifactRef{}, nil, nil, time.Now())
+	if hasRule(eval.Violations, RuleBlockModelDrift) {
+		t.Fatal("drift must not quarantine unless a policy asks for it")
+	}
+	if eval.Drift.High != 2 {
+		t.Fatalf("drift must still be counted, got %+v", eval.Drift)
+	}
+}
+
+func TestDriftGateFiresWhenEnabled(t *testing.T) {
+	pol := &securityv1alpha1.ArtifactScanPolicy{
+		Spec: securityv1alpha1.ArtifactScanPolicySpec{
+			Rules: securityv1alpha1.PolicyRules{BlockModelDrift: boolPtr(true)},
+		},
+	}
+	results := []securityv1alpha1.ScannerResult{
+		aibomResult(true, securityv1alpha1.SeverityCounts{High: 1}),
+	}
+
+	eval := Evaluate(results, securityv1alpha1.ArtifactRef{}, pol, nil, time.Now())
+	if !hasRule(eval.Violations, RuleBlockModelDrift) {
+		t.Fatalf("an enabled drift gate must fire on a high-severity disagreement; got %v",
+			eval.Violations)
+	}
+}
+
+// Low and medium drift is the noise floor — a licence string that does not
+// resolve, a tokenizer version that moved. Quarantining on it would train
+// operators to waive the rule, which is worse than not having it.
+func TestLowSeverityDriftDoesNotQuarantine(t *testing.T) {
+	pol := &securityv1alpha1.ArtifactScanPolicy{
+		Spec: securityv1alpha1.ArtifactScanPolicySpec{
+			Rules: securityv1alpha1.PolicyRules{BlockModelDrift: boolPtr(true)},
+		},
+	}
+	results := []securityv1alpha1.ScannerResult{
+		aibomResult(true, securityv1alpha1.SeverityCounts{Medium: 3, Low: 5}),
+	}
+
+	eval := Evaluate(results, securityv1alpha1.ArtifactRef{}, pol, nil, time.Now())
+	if hasRule(eval.Violations, RuleBlockModelDrift) {
+		t.Fatal("only high and critical drift should quarantine")
+	}
+}

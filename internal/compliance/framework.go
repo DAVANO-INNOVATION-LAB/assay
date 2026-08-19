@@ -77,6 +77,11 @@ const (
 	EvidenceSecurityScan EvidenceKind = "security-scan"
 	// EvidenceSBOM — a generated software bill of materials.
 	EvidenceSBOM EvidenceKind = "sbom"
+	// EvidenceAIBOM — a generated bill of materials describing the model
+	// itself: its architecture, measured parameter count, precision, licence
+	// and declared lineage. Distinct from EvidenceSBOM, which enumerates the
+	// packages around the model and says nothing about the model.
+	EvidenceAIBOM EvidenceKind = "aibom"
 	// EvidenceProvenance — signature and trusted-publisher verification.
 	EvidenceProvenance EvidenceKind = "provenance"
 	// EvidenceSecrets — embedded credential detection.
@@ -253,8 +258,8 @@ var nistAIRMF10 = []Control{
 	{
 		ID: "MAP 2.1", Function: FunctionMap, Category: "MAP 2",
 		Text:       "The specific tasks and methods used to implement the tasks that the AI system will support are defined (e.g., classifiers, generative models, recommenders).",
-		Automation: AutomationPartial, Evidence: []EvidenceKind{EvidenceInventory},
-		Rationale: "Assay records the artifact's model format and registry metadata. The task and method framing is a registry-authoring responsibility.",
+		Automation: AutomationPartial, Evidence: []EvidenceKind{EvidenceInventory, EvidenceAIBOM},
+		Rationale: "The bill of materials records the architecture measured from the weights and the task the model card declares, which is the method framing this subcategory asks for. Inventory alone never was: it named a file format. Whether the declared task is the right one for the deployment remains a registry-authoring responsibility.",
 	},
 	{
 		ID: "MAP 2.2", Function: FunctionMap, Category: "MAP 2",

@@ -23,6 +23,7 @@ require (
 )
 
 require (
+	github.com/DAVANO-INNOVATION-LAB/tessera v0.1.4-0.20260819221633-b7347ddbb1bf // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.15 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.33 // indirect
