@@ -147,6 +147,7 @@ func TestEveryCitedFindingPrefixCanActuallyBeEmitted(t *testing.T) {
 		"ASSAY-FORMAT": true, "ASSAY-IO": true, "ASSAY-LINK": true,
 		"ASSAY-EXEC": true, "ASSAY-HF": true, "ASSAY-PY": true,
 		"ASSAY-ONNX": true, "ASSAY-ZIP": true, "ASSAY-ELF": true,
+		"ASSAY-KERAS": true, "ASSAY-TF": true, "ASSAY-AIBOM": true,
 		"clamav": true, "trivy": true, "grype": true, "syft": true,
 		"trufflehog": true, "model-inspector": true, "provenance": true,
 		"tessera": true,

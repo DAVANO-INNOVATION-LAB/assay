@@ -163,6 +163,12 @@ func inspectFile(path, rel string, limits Limits) ([]securityv1alpha1.Finding, e
 		return inspectJSONConfig(path, rel)
 	case ".safetensors":
 		return inspectSafetensors(path, rel)
+	case ".keras":
+		return inspectKerasArchive(path, rel, limits)
+	case ".h5", ".hdf5":
+		return inspectHDF5(path, rel, true)
+	case ".pb":
+		return inspectSavedModel(path, rel)
 	case ".so", ".dylib", ".dll":
 		return []securityv1alpha1.Finding{finding(
 			"ASSAY-NATIVE-001", "Native shared library in model artifact", "High", rel,
@@ -754,6 +760,11 @@ func sniffUnknown(path, rel string, limits Limits) ([]securityv1alpha1.Finding, 
 			return nil, err
 		}
 		return scanPickleStream(f, rel, false)
+	case bytes.HasPrefix(head, hdf5Magic):
+		// A renamed HDF5 file is still loaded by whatever reads it. Detection
+		// prefers content over extension for the same reason every other
+		// check here does.
+		return inspectHDF5(path, rel, false)
 	case bytes.HasPrefix(head, []byte("#!")):
 		if _, err := f.Seek(0, io.SeekStart); err != nil {
 			return nil, err
@@ -820,7 +831,7 @@ func executesOnLoad(rel string) bool {
 	switch strings.ToLower(filepath.Ext(rel)) {
 	case ".pkl", ".pickle", ".joblib", ".dill",
 		".pt", ".pth", ".ckpt", ".bin",
-		".h5", ".keras", ".pb",
+		".h5", ".hdf5", ".keras", ".pb",
 		".npy", ".npz", ".msgpack", ".model":
 		return true
 
@@ -864,7 +875,7 @@ func formatOf(rel string) string {
 		return "pytorch"
 	case ".pb":
 		return "tensorflow"
-	case ".h5", ".keras":
+	case ".h5", ".hdf5", ".keras":
 		return "keras"
 	case ".pkl", ".pickle", ".joblib":
 		return "pickle"

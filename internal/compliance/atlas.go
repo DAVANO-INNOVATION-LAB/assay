@@ -89,10 +89,14 @@ var atlasTechniques = []Technique{
 	{
 		ID: "AML.T0011.000", Name: "Unsafe AI Artifacts", Tactic: "Execution",
 		Coverage:    CoverageDetected,
-		Findings:    []string{"ASSAY-PICKLE", "model-inspector"},
+		Findings:    []string{"ASSAY-PICKLE", "ASSAY-KERAS", "ASSAY-TF", "model-inspector"},
 		Mitigations: []string{"AML.M0011", "AML.M0013", "AML.M0014", "AML.M0016"},
 		Rationale: "Deserialization of a model that executes code on load. The inspector reads pickle " +
-			"opcodes directly and reports GLOBAL/STACK_GLOBAL references to callables that run at load time.",
+			"opcodes directly and reports GLOBAL/STACK_GLOBAL references to callables that run at load time. " +
+			"The same technique in the Keras family is covered separately, because it does not go through " +
+			"pickle at all: a Lambda layer carries a marshalled code object, a TFSMLayer loads an external " +
+			"SavedModel from a path in the config, and an altered config.json names arbitrary modules to " +
+			"import — CVE-2026-1462 and CVE-2025-1550 respectively, both of which bypass safe_mode.",
 	},
 	{
 		ID: "AML.T0018.002", Name: "Embed Malware", Tactic: "AI Attack Staging",
