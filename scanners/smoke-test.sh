@@ -18,6 +18,15 @@ FIXTURE="$WORK/model"
 RESULTS="$WORK/results"
 mkdir -p "$FIXTURE" "$RESULTS"
 
+# The scanners run as uid 65532, and this directory is created by whoever ran
+# the script. On Linux that mismatch means every scanner fails to write its
+# report; on macOS the Docker Desktop file-sharing layer papers over it, which
+# is why this passes on a laptop and fails in CI.
+#
+# Only the test harness needs this. In a real scan the results directory is an
+# emptyDir that Kubernetes provisions with the right ownership.
+chmod 0777 "$RESULTS"
+
 # EICAR: the standard antivirus test string. Not malware; every engine is
 # required to detect it, which is what makes it a usable signal here.
 printf 'X5O!P%%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' \
