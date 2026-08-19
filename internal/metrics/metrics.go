@@ -21,6 +21,11 @@ const (
 	OutcomeAllowedAudit   = "allowed_audit"
 	OutcomeAllowedWarn    = "allowed_warn"
 	OutcomeAllowedSkipped = "allowed_skip_annotation"
+	// OutcomeAllowedUnidentified is a workload that looks like it serves a
+	// model whose identity Assay could not determine. It is counted apart
+	// from OutcomeAllowed because the two are opposite facts — one is an
+	// approval, the other is the gate admitting that it did not gate.
+	OutcomeAllowedUnidentified = "allowed_unidentified_model"
 	OutcomeError          = "error"
 )
 
