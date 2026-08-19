@@ -199,7 +199,10 @@ func runAIBOM(ctx context.Context, args []string) error {
 			"model.spdx.json": docs.SPDX,
 		} {
 			path := filepath.Join(*bomDir, name)
-			if err := os.WriteFile(path, body, 0o644); err != nil {
+			// 0644 for the same reason writeJSON uses it: these are handed
+			// between containers in the scan pod, which may run as different
+			// UIDs, and the path is an emptyDir private to the pod.
+			if err := os.WriteFile(path, body, 0o644); err != nil { //nolint:gosec // G306: shared within the pod's emptyDir by design
 				return fmt.Errorf("write %s: %w", path, err)
 			}
 		}
