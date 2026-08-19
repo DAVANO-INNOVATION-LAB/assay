@@ -1,0 +1,63 @@
+# RBAC for the console API.
+#
+# Deliberately narrower than the operator's. The operator creates Jobs, writes
+# status across namespaces and manages webhooks; the API server is reachable by
+# people, so it gets only what it needs to render the console and record the two
+# things a user can create.
+#
+# In particular it has no access to Secrets. A connector references a Secret by
+# name and the operator resolves it; the API server never reads one, so a flaw
+# in the HTTP surface cannot become credential disclosure.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: assay-api
+  namespace: assay-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: assay-api
+rules:
+  # Read the posture. Cluster-scoped because a security team's remit usually
+  # is; which namespaces a given login may actually see is decided per request
+  # from the role bindings, not by this grant.
+  - apiGroups: ["security.davano.io"]
+    resources:
+      - modelsecurityreports
+      - artifactscanreports
+      - artifactscans
+      - artifactscanpolicies
+      - compliancereports
+      - artifactexceptions
+      - modelregistryconnectors
+      - trustedpublishers
+      - auditrecords
+      - auditcheckpoints
+    verbs: ["get", "list", "watch"]
+
+  # The two things a user can create through the console. Note there is no
+  # delete on scans or exceptions: a verdict and an acceptance are records, and
+  # a console that can erase them is not an audit trail.
+  - apiGroups: ["security.davano.io"]
+    resources: ["artifactscans", "artifactexceptions"]
+    verbs: ["create"]
+
+  # Model sources are administrative, and the API enforces the admin role
+  # before using any of these.
+  - apiGroups: ["security.davano.io"]
+    resources: ["modelregistryconnectors"]
+    verbs: ["create", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: assay-api
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: assay-api
+subjects:
+  - kind: ServiceAccount
+    name: assay-api
+    namespace: assay-system

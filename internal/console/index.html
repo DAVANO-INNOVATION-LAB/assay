@@ -1,0 +1,1851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assay — Console</title>
+<meta name="color-scheme" content="dark light">
+<!-- Inline so the console stays one self-contained file: an external icon
+     would be a second request the serving path may not answer, and the tab
+     falls back to a grey placeholder letter. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%232563eb'/%3E%3Cpath d='M13 4 5.5 14.2h5.4L10.3 20l8-11.1h-5.7z' fill='white'/%3E%3C/svg%3E">
+<style>
+/* Same tokens as the product site, so the console reads as the same product.
+   Brand cobalt stays out of the severity ramp. */
+:root{
+  --bg:#0a0d14;--bg-raised:#121722;--bg-inset:#070910;
+  --border:#1e2534;--border-bright:#2c3547;
+  --text:#e8ecf4;--text-dim:#9aa5ba;--text-faint:#7e8ba1;
+  --accent:#2563eb;--accent-text:#6da5fb;--accent-ink:#fff;
+  --accent-soft:rgba(59,130,246,.14);--electric:#22d3ee;
+  --critical:#fb7185;--high:#fb923c;--medium:#fbbf24;--low:#34d399;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Inter,sans-serif;
+}
+@media (prefers-color-scheme:light){
+  :root{
+    --bg:#fafbfd;--bg-raised:#fff;--bg-inset:#f1f4f9;
+    --border:#dde3ec;--border-bright:#c3ccda;
+    --text:#0d1220;--text-dim:#4a5568;--text-faint:#5b6678;
+    --accent:#1d4ed8;--accent-text:#1d4ed8;--accent-soft:rgba(29,78,216,.09);
+    --electric:#0a5f78;
+    --critical:#ad1036;--high:#a63709;--medium:#7a4a05;--low:#036545;
+  }
+}
+*{box-sizing:border-box}
+/* The hidden attribute is implemented by the UA stylesheet as display:none,
+   which any author-level display rule silently outranks. .drawer sets
+   display:flex, so a drawer marked hidden rendered anyway — an empty panel
+   stuck over the page with a placeholder title. Restate it with enough
+   specificity to win. */
+[hidden]{display:none !important}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding:0 24px}
+header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)}
+.bar{display:flex;align-items:center;gap:12px;min-height:58px;flex-wrap:wrap;padding:8px 0}
+.bolt{width:22px;height:22px;color:var(--accent);flex:none}
+.brand{font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.brand .lab{font-family:var(--mono);font-weight:400;font-size:.72rem;letter-spacing:.07em;text-transform:uppercase;color:var(--text-faint);padding-left:10px;margin-left:8px;border-left:1px solid var(--border-bright)}
+/* Findings expand in place: the row header is the summary, the detail panel
+   carries the full description, location and category. */
+tbody tr.fx{cursor:pointer}
+tbody tr.fx:hover{background:var(--accent-soft)}
+.chev{display:inline-block;width:12px;color:var(--text-faint);font-family:var(--mono);transition:transform .15s}
+tr.open .chev{transform:rotate(90deg);color:var(--accent-text)}
+tr.detail>td{background:var(--bg-inset);padding:0}
+.dwrap{padding:14px 18px 16px 44px;display:grid;gap:8px}
+.drow{display:grid;grid-template-columns:96px 1fr;gap:12px;font-size:.84rem}
+.dk{font-family:var(--mono);font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;color:var(--text-faint);padding-top:2px}
+.dv{color:var(--text-dim);word-break:break-word}
+.dv.mono{font-family:var(--mono);font-size:.8rem;color:var(--text)}
+h1{font-size:1.5rem;letter-spacing:-.02em;margin:0}
+.sec-label{display:inline-block;font-family:var(--mono);font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;background:var(--accent);color:var(--accent-ink);padding:3px 9px;border-radius:4px;margin-bottom:12px}
+section{padding:34px 0}
+section+section{border-top:1px solid var(--border)}
+/* ---- header actions and drawer ------------------------------------- */
+.hspace{flex:1}
+.hbtn{display:inline-flex;align-items:center;gap:7px;background:var(--bg-raised);color:var(--text);border:1px solid var(--border-bright);border-radius:8px;padding:6px 12px;font:inherit;font-size:.82rem;cursor:pointer;text-decoration:none;white-space:nowrap}
+.hbtn:hover{border-color:var(--accent);color:var(--accent-text)}
+.who{display:flex;align-items:center;gap:8px;font-size:.76rem;color:var(--text-dim);margin-left:auto}
+.badge{background:var(--accent);color:var(--accent-ink);border-radius:999px;font-family:var(--mono);font-size:.68rem;padding:1px 6px;font-weight:700}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:30;backdrop-filter:blur(2px)}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(760px,94vw);background:var(--bg);border-left:1px solid var(--border);z-index:31;display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(0,0,0,.35)}
+.dhead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--border);background:var(--bg-raised)}
+.dhead b{font-size:1.05rem;letter-spacing:-.01em}
+.dbody{overflow-y:auto;padding:20px;flex:1}
+@media(max-width:640px){.hbtn{padding:5px 9px;font-size:.76rem}.brand .lab{display:none}}
+/* ---- scan form ------------------------------------------------------- */
+.form{padding:18px;display:grid;gap:14px}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:720px){.frow{grid-template-columns:1fr}}
+.fld{display:grid;gap:5px}
+.fld>span{font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint)}
+.fld input:not([type=checkbox]):not([type=radio]),.fld select{background:var(--bg-inset);color:var(--text);border:1px solid var(--border-bright);border-radius:8px;padding:9px 11px;font:inherit;font-size:.9rem;width:100%}
+.fld input:not([type=checkbox]):not([type=radio]){font-family:var(--mono);font-size:.85rem}
+.fld input:focus,.fld select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+/* Belt and braces: a checkbox is sized by the browser, never by the field
+   rules above. */
+.fld input[type=checkbox]{width:auto;padding:0;border:0;background:none;border-radius:0}
+.fld input:invalid:not(:placeholder-shown){border-color:var(--critical)}
+.fld small{color:var(--text-faint);font-size:.76rem;line-height:1.45}
+.checks{display:flex;flex-wrap:wrap;gap:7px}
+.chk{display:inline-flex;align-items:center;gap:6px;background:var(--bg-inset);border:1px solid var(--border-bright);border-radius:999px;padding:5px 11px;cursor:pointer;font-family:var(--mono);font-size:.76rem;user-select:none}
+.chk:hover{border-color:var(--accent)}
+.chk input{accent-color:var(--accent);margin:0;cursor:pointer;width:auto;flex:none;padding:0}
+/* Keep the label on one line so a long name cannot wrap under its own box. */
+.chk{white-space:nowrap}
+.chk.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-text)}
+.factions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.rbtn.go{flex:none;min-width:190px;justify-content:center;text-align:center}
+#f-preview{font-size:.76rem;color:var(--text-faint)}
+.lnk{color:var(--accent-text);cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-family:var(--sans);text-transform:none;letter-spacing:0;background:none;border:0;padding:0;font-size:inherit}
+.lnk:hover{opacity:.75}
+.lnk:focus-visible,.hbtn:focus-visible,.qhead:focus-visible,.stat:focus-visible,.tag:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* ---- queue rows inside the drawer ----------------------------------- */
+.qrow{border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;background:var(--bg-raised)}
+.qhead{display:flex;align-items:center;gap:10px;padding:11px 13px;cursor:pointer;flex-wrap:wrap}
+.qhead:hover{background:var(--bg-inset)}
+.qrow.open .chev{transform:rotate(90deg);color:var(--accent-text)}
+.qname{flex:1;min-width:150px}
+.qdetail{border-top:1px solid var(--border);background:var(--bg-inset);padding:13px}
+.qfindings{display:grid;gap:9px;margin-bottom:6px}
+.acceptbox{border-top:1px solid var(--border);margin-top:12px;padding-top:12px;display:grid;gap:10px}
+.acceptbox textarea{background:var(--bg);color:var(--text);border:1px solid var(--border-bright);border-radius:8px;padding:9px 11px;font:inherit;font-size:.86rem;width:100%;resize:vertical;min-height:52px}
+.acceptbox textarea:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.qf{display:grid;grid-template-columns:78px 1fr;gap:10px;align-items:start;padding-bottom:9px;border-bottom:1px solid var(--border)}
+.qf:last-child{border-bottom:0;padding-bottom:0}
+.dbody pre{margin:0;background:var(--bg-inset);border:1px solid var(--border-bright);border-radius:8px;padding:11px 13px;overflow-x:auto;font-family:var(--mono);font-size:.79rem;line-height:1.6;color:var(--text);white-space:pre-wrap;word-break:break-word}
+/* ---- scan trigger provenance ---------------------------------------- */
+.trig{font-family:var(--mono);font-size:.64rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:4px;white-space:nowrap;border:1px solid transparent}
+.trig.registry{color:var(--accent-text);background:var(--accent-soft);border-color:var(--accent)}
+.trig.runtime{color:var(--high);background:color-mix(in srgb,var(--high) 14%,transparent);border-color:var(--high)}
+.trig.periodic{color:var(--electric);background:color-mix(in srgb,var(--electric) 14%,transparent);border-color:var(--electric)}
+.trig.manual{color:var(--text-dim);background:var(--bg-inset);border-color:var(--border-bright)}
+.trig.pipeline{color:var(--low);background:color-mix(in srgb,var(--low) 13%,transparent);border-color:var(--low)}
+.trig.unknown{color:var(--text-faint);background:var(--bg-inset)}
+/* ---- clickable affordances ------------------------------------------- */
+.stat{cursor:pointer;transition:background .12s}
+.stat:hover{background:var(--bg-inset)}
+.stat.on{background:var(--accent-soft)}
+.stat.on b{color:var(--accent-text)}
+tr.click{cursor:pointer}
+tr.click:hover>td{background:var(--bg-inset)}
+.tag{cursor:pointer;border:1px solid transparent}
+.tag:hover{border-color:var(--accent)}
+.filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;min-height:26px}
+.fchip{display:inline-flex;align-items:center;gap:7px;background:var(--accent-soft);color:var(--accent-text);border:1px solid var(--accent);border-radius:999px;padding:3px 10px;font-family:var(--mono);font-size:.74rem}
+.fchip b{cursor:pointer;font-weight:700;opacity:.75}
+.fchip b:hover{opacity:1}
+.ext{color:var(--accent-text);text-decoration:none;border-bottom:1px dotted currentColor}
+.ext:hover{opacity:.75}
+/* ---- compliance drill-down ------------------------------------------- */
+.brow.click{cursor:pointer;border-radius:6px;padding:2px 4px;margin:0 -4px}
+.brow.click:hover{background:var(--bg-inset)}
+.ctl{display:grid;grid-template-columns:110px 1fr;gap:10px;padding:9px 4px;border-top:1px solid var(--border);font-size:.84rem}
+.ctl .cid{font-family:var(--mono);font-size:.76rem;color:var(--text-dim)}
+.ctl .creason{color:var(--text-dim);line-height:1.5}
+.cstat{font-family:var(--mono);font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;padding:2px 6px;border-radius:4px;white-space:nowrap;display:inline-block;margin-bottom:3px}
+.cstat.satisfied{color:var(--low);background:color-mix(in srgb,var(--low) 13%,transparent)}
+.cstat.attested{color:var(--accent-text);background:var(--accent-soft)}
+.cstat.partiallysatisfied{color:var(--medium);background:color-mix(in srgb,var(--medium) 16%,transparent)}
+.cstat.attestationrequired{color:var(--text-faint);background:var(--bg-inset)}
+.cstat.notsatisfied{color:var(--critical);background:color-mix(in srgb,var(--critical) 13%,transparent)}
+.cstat.notapplicable{color:var(--text-faint);background:var(--bg-inset)}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-top:18px}
+.stat{background:var(--bg-raised);padding:16px 18px}
+.stat b{display:block;font-size:1.5rem;font-weight:600;letter-spacing:-.02em}
+.stat span{font-size:.74rem;color:var(--text-faint);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase}
+@media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+.panel{border:1px solid var(--border);border-top:2px solid var(--accent);border-radius:12px;background:var(--bg-raised);overflow:hidden;margin-top:18px}
+.tscroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.86rem;min-width:640px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:top}
+thead th{font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);font-weight:500;background:var(--bg-inset)}
+tbody tr:last-child td{border-bottom:0}
+tbody tr.sel{background:var(--accent-soft)}
+tbody tr[data-model]{cursor:pointer}
+tbody tr[data-model]:hover{background:var(--accent-soft)}
+td:first-child{color:var(--text);font-weight:500}
+.mono{font-family:var(--mono);font-size:.82rem}
+.pill.connected{color:var(--low);background:color-mix(in srgb,var(--low) 13%,transparent)}
+.pill.degraded{color:var(--medium);background:color-mix(in srgb,var(--medium) 15%,transparent)}
+.pill.error{color:var(--critical);background:color-mix(in srgb,var(--critical) 13%,transparent)}
+.pill.pending{color:var(--text-faint);background:var(--bg-inset)}
+.srcmsg{font-size:.76rem;color:var(--text-dim);margin-top:2px;max-width:52ch}
+.srcact{display:flex;gap:6px;justify-content:flex-end}
+.pill{font-family:var(--mono);font-size:.7rem;padding:2px 8px;border-radius:5px;white-space:nowrap}
+.pill.quarantined,.pill.notsatisfied{color:var(--critical);background:color-mix(in srgb,var(--critical) 13%,transparent)}
+.pill.approved,.pill.satisfied{color:var(--low);background:color-mix(in srgb,var(--low) 13%,transparent)}
+.pill.reviewrequired,.pill.partial{color:var(--medium);background:color-mix(in srgb,var(--medium) 15%,transparent)}
+.pill.unknown,.pill.attested{color:var(--text-faint);background:color-mix(in srgb,var(--text-faint) 14%,transparent)}
+.sev{font-family:var(--mono);font-size:.66rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:4px;white-space:nowrap}
+.sev.critical{color:var(--critical);background:color-mix(in srgb,var(--critical) 13%,transparent)}
+.sev.high{color:var(--high);background:color-mix(in srgb,var(--high) 15%,transparent)}
+.sev.medium{color:var(--medium);background:color-mix(in srgb,var(--medium) 16%,transparent)}
+.sev.low{color:var(--low);background:color-mix(in srgb,var(--low) 13%,transparent)}
+.risk{font-family:var(--mono);font-weight:600}
+.risk.hot{color:var(--critical)}.risk.warm{color:var(--medium)}.risk.cool{color:var(--low)}
+.fid{font-family:var(--mono);font-size:.76rem;color:var(--electric)}
+.loc{font-family:var(--mono);font-size:.74rem;color:var(--text-faint);display:block;margin-top:2px;word-break:break-all}
+.empty{padding:22px;color:var(--text-faint);font-style:italic}
+.err{margin-top:18px;border:1px solid var(--border);border-left:3px solid var(--critical);background:var(--bg-raised);border-radius:0 10px 10px 0;padding:16px 18px;font-size:.88rem;color:var(--text-dim)}
+.bars{display:grid;gap:9px;padding:16px 18px}
+.brow{display:grid;grid-template-columns:80px 1fr auto;gap:12px;align-items:center;font-size:.8rem}
+.brow .fn{font-family:var(--mono);font-size:.72rem;letter-spacing:.07em;color:var(--text-dim)}
+.track{display:flex;height:9px;border-radius:5px;overflow:hidden;background:var(--bg-inset)}
+.track i{display:block}
+.legend{display:flex;flex-wrap:wrap;gap:14px;padding:0 18px 16px;font-family:var(--mono);font-size:.7rem;color:var(--text-faint)}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{width:9px;height:9px;border-radius:2px;display:block}
+.note{color:var(--text-dim);font-size:.86rem;margin:10px 0 0;max-width:70ch}
+.fsum{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.fcount{font-family:var(--mono);font-size:.74rem;color:var(--text-faint);margin-left:4px}
+.runbar{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.rbtn{display:inline-flex;flex-direction:column;gap:3px;text-align:left;cursor:pointer;
+  border:1px solid var(--border-bright);background:var(--bg-raised);color:var(--text);
+  border-radius:9px;padding:11px 15px;font-family:inherit;font-size:.88rem;
+  transition:border-color .15s,background .15s}
+.rbtn:hover{border-color:var(--accent);background:var(--accent-soft)}
+.rbtn:disabled{opacity:.55;cursor:progress}
+.rbtn b{font-weight:600}
+.rbtn span{font-family:var(--mono);font-size:.7rem;color:var(--text-faint);letter-spacing:.04em}
+.rbtn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.rbtn.primary span{color:color-mix(in srgb,var(--accent-ink) 78%,transparent)}
+.rbtn.primary:hover{opacity:.9;background:var(--accent)}
+.msg{margin-top:12px;border:1px solid var(--border);border-left:3px solid var(--accent);
+  background:var(--bg-raised);border-radius:0 9px 9px 0;padding:12px 15px;font-size:.86rem;color:var(--text-dim)}
+.msg.bad{border-left-color:var(--critical)}
+.phase{font-family:var(--mono);font-size:.72rem;padding:2px 8px;border-radius:5px;
+  color:var(--accent-text);background:var(--accent-soft)}
+.phase.completed{color:var(--low);background:color-mix(in srgb,var(--low) 13%,transparent)}
+.phase.failed{color:var(--critical);background:color-mix(in srgb,var(--critical) 13%,transparent)}
+</style>
+</head>
+<body>
+
+<header><div class="wrap bar">
+  <svg class="bolt" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.2h5.9L9.8 22l9-11.6h-6.2z"/></svg>
+  <span class="brand">Assay<span class="lab">Model Security</span></span>
+  <span class="hspace"></span>
+  <button class="hbtn" id="open-queue" type="button">
+    Review queue <span class="badge" id="queue-badge" hidden>0</span>
+  </button>
+  <button class="hbtn" id="open-cli" type="button">Get the CLI</button>
+  <span class="who" id="whoami"></span>
+  <a class="hbtn" id="report-issue" href="#" target="_blank" rel="noopener">Report an issue</a>
+</div></header>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<aside class="drawer" id="drawer" hidden aria-modal="true" role="dialog" aria-labelledby="drawer-title">
+  <div class="dhead">
+    <b id="drawer-title">…</b>
+    <button class="hbtn" id="drawer-close" type="button" aria-label="Close">Close</button>
+  </div>
+  <div class="dbody" id="drawer-body"></div>
+</aside>
+
+<div class="wrap">
+
+  <section>
+    <span class="sec-label">Run a scan</span>
+    <h1>Register a model and watch it get judged.</h1>
+    <p class="note">Creates an <span class="mono">ArtifactScan</span> in the cluster. The operator
+      resolves the artifact, runs one isolated Job per scanner, and the verdict lands in the
+      inventory below — usually within about 20 seconds.</p>
+
+    <p class="note">The first two run the same five scanners and differ only in the artifact —
+      that contrast is the point, since a scanner that can never return <em>Approved</em> is
+      not telling you anything. Each preset fills the form below, so you can edit it before
+      running, or ignore them and describe any model the cluster can reach.</p>
+    <div class="runbar" id="runbar"></div>
+
+    <form class="panel form" id="scanform" autocomplete="off">
+      <div class="frow">
+        <label class="fld">
+          <span>Model name</span>
+          <input id="f-model" placeholder="fraud-detector" required>
+        </label>
+        <label class="fld">
+          <span>Version</span>
+          <input id="f-version" placeholder="leave blank for a timestamp">
+        </label>
+      </div>
+
+      <label class="fld">
+        <span>Artifact URI</span>
+        <input id="f-uri" placeholder="s3://models/fraud-detector/v3" required spellcheck="false">
+        <small id="f-urihint">Where the bytes live. Assay stages them, then scans what it staged.</small>
+      </label>
+
+      <div class="frow">
+        <label class="fld">
+          <span>Format</span>
+          <select id="f-format">
+            <option value="">auto-detect</option>
+            <option>safetensors</option><option>pytorch</option><option>onnx</option>
+            <option>pickle</option><option>gguf</option><option>tensorflow</option><option>keras</option>
+          </select>
+          <small>Only used by policy format rules; the inspector detects the real format regardless.</small>
+        </label>
+        <label class="fld">
+          <span>Policy</span>
+          <select id="f-policy"><option value="">cluster default</option></select>
+          <small>Decides thresholds and enforcement mode.</small>
+        </label>
+      </div>
+
+      <div class="fld">
+        <span>Scanners <button type="button" class="lnk" id="f-allscan">all</button> ·
+          <button type="button" class="lnk" id="f-nonescan">none</button></span>
+        <div class="checks" id="f-scanners"></div>
+        <small>Leaving all unchecked runs the policy's default set.</small>
+      </div>
+
+      <div class="factions">
+        <button class="rbtn primary go" type="submit" id="f-submit"><b>Scan this model</b></button>
+        <span class="mono" id="f-preview"></span>
+      </div>
+    </form>
+
+    <div id="runmsg"></div>
+    <div class="panel" id="activepanel" hidden><div class="tscroll"><table>
+      <thead><tr><th>Scan</th><th>Model</th><th>Version</th><th>Phase</th><th>Scanners</th><th>Verdict</th></tr></thead>
+      <tbody id="active"></tbody>
+    </table></div></div>
+  </section>
+
+  <section>
+    <span class="sec-label">Model sources</span>
+    <h1>Where models come from, and whether Assay can still see them.</h1>
+    <p class="note">Each row is a <span class="mono">ModelRegistryConnector</span>. The operator polls
+      it, opens a scan for every version it has not seen, and writes the verdict back onto the
+      version so the people who registered the model see it where they work.</p>
+    <p class="note"><b>A source that has stopped answering is the failure worth noticing.</b> It
+      produces no findings and no alarms — the inventory simply stops growing, which looks
+      identical to nothing new being registered. That is why the state and the age of the last
+      sync are on the same row: <span class="mono">Connected</span> with a sync from four days ago
+      is not connected.</p>
+    <div class="panel"><div class="tscroll"><table>
+      <thead><tr><th>Source</th><th>Type</th><th>Endpoint</th><th>State</th><th>Models</th><th>Versions</th><th>Scans</th><th>Last sync</th><th></th></tr></thead>
+      <tbody id="sources"><tr><td colspan="9" class="empty">Loading…</td></tr></tbody>
+    </table></div></div>
+
+    <div class="factions" style="margin-top:14px">
+      <button class="rbtn" type="button" id="src-toggle">Connect a source</button>
+      <span class="mono" id="src-count"></span>
+    </div>
+
+    <form class="panel form" id="srcform" autocomplete="off" hidden>
+      <div class="frow">
+        <label class="fld">
+          <span>Type</span>
+          <select id="s-type">
+            <option value="MLflow">MLflow</option>
+            <option value="KubeflowModelRegistry">Kubeflow / OpenShift AI Model Registry</option>
+          </select>
+          <small id="s-typehint"></small>
+        </label>
+        <label class="fld">
+          <span>Name</span>
+          <input id="s-name" placeholder="team-mlflow" required spellcheck="false">
+          <small>Lowercase letters, digits and dashes. Used as the object name.</small>
+        </label>
+      </div>
+
+      <label class="fld">
+        <span>Endpoint</span>
+        <input id="s-url" placeholder="http://mlflow.mlflow.svc.cluster.local:5000" required spellcheck="false">
+        <small id="s-urlhint">Resolved from inside the cluster, not from this browser — a
+          <span class="mono">localhost</span> address here means the operator pod, not your laptop.</small>
+      </label>
+
+      <div class="frow">
+        <label class="fld">
+          <span>Poll every</span>
+          <input id="s-poll" value="5m" spellcheck="false">
+          <small>How often to look for newly registered versions.</small>
+        </label>
+        <label class="fld">
+          <span>Re-scan after</span>
+          <input id="s-rescan" value="24h" spellcheck="false">
+          <small>A verdict describes what was known when it ran. Leave blank to scan each
+            version once and never revisit it.</small>
+        </label>
+      </div>
+
+      <div class="frow">
+        <label class="fld">
+          <span>Policy</span>
+          <select id="s-policy"><option value="">cluster default</option></select>
+          <small>Applied to every scan this source opens.</small>
+        </label>
+        <label class="fld">
+          <span>Only these models</span>
+          <input id="s-include" placeholder="fraud-* , risk-scoring" spellcheck="false">
+          <small>Comma-separated globs. Blank means everything the source holds.</small>
+        </label>
+      </div>
+
+      <label class="fld">
+        <span>Credential</span>
+        <div class="frow" style="margin:0">
+          <input id="s-secret" placeholder="Secret name — blank if the endpoint is open" spellcheck="false">
+          <input id="s-secretkey" value="token" spellcheck="false">
+        </div>
+        <small><b>Paste the token into a Secret, not into this page.</b> The console is served
+          through <span class="mono">kubectl proxy</span> over plain HTTP and a token typed here
+          would be readable in the request log of anything in between. The connector stores only
+          the reference:
+          <br><span class="mono" id="s-secretcmd"></span></small>
+      </label>
+
+      <div class="fld">
+        <div class="checks">
+          <label><input type="checkbox" id="s-writeback" checked> <span>Write verdicts back to the source</span></label>
+          <label><input type="checkbox" id="s-insecure"> <span>Skip TLS verification</span></label>
+        </div>
+        <small>Skipping verification is for an internal CA you have not mounted yet. It makes the
+          connection unauthenticated in practice — mount the CA instead when you can.</small>
+      </div>
+
+      <div class="factions">
+        <button class="rbtn primary go" type="submit" id="s-submit"><b>Connect</b></button>
+        <button class="rbtn" type="button" id="s-cancel">Cancel</button>
+      </div>
+      <p class="note" style="margin:0">There is no separate connection test: creating the source
+        <em>is</em> the test. It reports <span class="mono">Connected</span> with a model count, or
+        <span class="mono">Error</span> with the reason, on the next poll.</p>
+    </form>
+
+    <div id="srcmsg"></div>
+  </section>
+
+  <section>
+    <span class="sec-label">Model inventory</span>
+    <h1>Every registered model, with its posture attached.</h1>
+    <p class="note">Live from the cluster. Each row is a <span class="mono">ModelSecurityReport</span>; click one to see its findings and framework assessment.</p>
+    <div id="err"></div>
+    <div id="redaction"></div>
+    <div class="stats" id="stats"></div>
+    <div class="filters" id="invfilters"></div>
+    <div class="panel"><div class="tscroll"><table>
+      <thead><tr><th>Model</th><th>Version</th><th>Verdict</th><th>Risk</th><th>Triggered by</th><th>Malware</th><th>Secrets</th><th>Last scan</th></tr></thead>
+      <tbody id="inv"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
+    </table></div></div>
+  </section>
+
+  <section>
+    <span class="sec-label">Findings</span>
+    <h1 id="findings-for">Scan findings</h1>
+    <div class="fsum" id="findings-summary"></div>
+    <div class="filters" id="findfilters"></div>
+    <div class="panel"><div class="tscroll"><table>
+      <thead><tr><th>Severity</th><th>Finding</th><th>Scanner</th></tr></thead>
+      <tbody id="findings"><tr><td colspan="3" class="empty">Select a model.</td></tr></tbody>
+    </table></div></div>
+  </section>
+
+
+  <section>
+    <span class="sec-label">NIST AI RMF 1.0</span>
+    <h1 id="compliance-for">Framework assessment</h1>
+    <p class="note">Assay evidences a minority of the 72 subcategories. The rest are organizational and can only be closed by a named attestation — they are shown open rather than assumed.</p>
+    <div id="compliance"></div>
+  </section>
+
+
+</div>
+
+<script>
+// Served by assay-api, which authenticates every request.
+//
+// The page holds no credential: the session is an HttpOnly, Secure cookie the
+// browser attaches automatically and JavaScript here cannot read. Nothing is
+// filtered client-side for security — the server returns only what the signed-in
+// subject may see, and findings it may not are redacted before they are
+// serialized, not hidden with CSS. Anything this page can display, it was
+// already allowed to have.
+//
+// Capabilities returned by /api/whoami hide controls a role cannot use. That is
+// a courtesy to the user, not a control: the server refuses the action either
+// way.
+const API = '/api';
+
+// me is the signed-in subject: username, roles, tenants and capabilities.
+let me = null;
+const can = c => !!(me && me.capabilities && me.capabilities[c]);
+// The install namespace, reported by the server so command hints are accurate.
+let NS = 'assay-system';
+
+// Selection is model *and* version: the same model can have several versions
+// with completely different postures, so filtering on the name alone would mix
+// a quarantined v3 in with an approved v2.
+let selected = null; // {model, version}
+const keyOf = (m, v) => `${m}@${v}`;
+
+// Filters are click-driven from the table itself rather than typed: every
+// verdict pill, severity tag and scanner name narrows what is below it.
+const filters = { verdict: null, scanner: null, severity: null, trigger: null };
+let policyNames = [];
+// Which AI RMF functions are expanded, preserved across the 2s refresh.
+const openFunctions = new Set();
+
+// Single quotes are escaped too: nothing today uses a single-quoted attribute,
+// but this runs on ~80 interpolations and the first one added later would be
+// an injection point.
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cls = s => String(s ?? 'unknown').toLowerCase().replace(/[^a-z]/g, '');
+
+// Raised when the session is missing or expired, so refresh() can show a
+// sign-in prompt rather than a misleading "cannot reach the cluster".
+class NotSignedIn extends Error {}
+
+async function api(path, opts = {}) {
+  const r = await fetch(`${API}${path}`, {
+    headers: { Accept: 'application/json', ...(opts.headers || {}) },
+    ...opts,
+  });
+  if (r.status === 401) throw new NotSignedIn('not signed in');
+  if (r.status === 403) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body.error || 'your role does not permit that');
+  }
+  if (!r.ok) {
+    const text = await r.text().catch(() => '');
+    throw new Error(`HTTP ${r.status}${text ? ' — ' + text.slice(0, 200) : ''}`);
+  }
+  if (r.status === 204) return null;
+  return r.json();
+}
+
+// The API returns flat views; the render functions were written against the
+// CRD shape. Adapting here rather than rewriting every renderer keeps one
+// well-tested layer of display logic and confines the change to this seam.
+const asReport = m => ({
+  spec: { modelName: m.modelName, modelVersion: m.modelVersion },
+  metadata: { namespace: m.namespace },
+  status: {
+    verdict: m.verdict, riskScore: m.riskScore, malware: m.malware,
+    secrets: m.secrets, cves: m.severities, lastScanTime: m.lastScanTime,
+  },
+});
+
+const asScan = s => ({
+  metadata: { name: s.name, namespace: s.namespace },
+  spec: {
+    modelName: s.modelName, modelVersion: s.modelVersion,
+    trigger: s.trigger, triggeredBy: s.triggeredBy,
+  },
+  status: {
+    phase: s.phase, verdict: s.verdict,
+    // A scan with no verdict yet has no score. Substituting zero would make
+    // one still running look like a clean result.
+    riskScore: s.scored ? s.riskScore : null,
+    results: new Array(s.scanners || 0),
+  },
+});
+
+const asException = e => ({
+  metadata: { name: e.name, namespace: e.namespace },
+  spec: {
+    modelName: e.modelName, modelVersion: e.modelVersion,
+    findingIDs: e.findingIds, rules: e.rules, reason: e.reason,
+    approvedBy: e.approvedBy, approvedAt: e.approvedAt, expiresAt: e.expiresAt,
+  },
+});
+
+const riskClass = v => v >= 70 ? 'hot' : v >= 30 ? 'warm' : 'cool';
+const ago = ts => {
+  if (!ts) return '—';
+  const s = Math.max(0, (Date.now() - new Date(ts)) / 1000);
+  if (s < 60) return `${Math.floor(s)}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  return `${Math.floor(s / 3600)}h ago`;
+};
+
+// Renders the active filters as removable chips, so a narrowed view always
+// says why it is narrowed and can be widened again in one click.
+function renderFilterChips(elId, keys) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const active = keys.filter(k => filters[k]);
+  el.innerHTML = active.length
+    ? active.map(k => `<span class="fchip">${k}: ${esc(filters[k])} <button type="button" class="lnk" data-clear="${k}" aria-label="Clear ${k} filter">✕</button></span>`).join('')
+      + `<button type="button" class="lnk" data-clear="*">clear all</button>`
+    : '';
+  el.querySelectorAll('[data-clear]').forEach(n => n.onclick = () => {
+    if (n.dataset.clear === '*') keys.forEach(k => filters[k] = null);
+    else filters[n.dataset.clear] = null;
+    refresh();
+  });
+}
+
+// How a model was most recently scanned. Registry, runtime, periodic and
+// manual are different assurances about the same artifact, and a table that
+// shows only the verdict hides which one you are looking at.
+const TRIGGER_HELP = {
+  Registry: 'the model source published this version',
+  Runtime:  'a workload tried to deploy it',
+  Periodic: 'a scheduled recheck since the last verdict aged',
+  Manual:   'somebody asked for it here',
+  Pipeline: 'CI asked for it',
+};
+
+function triggerFor(model, version) {
+  const mine = queueState.scans.filter(s =>
+    s.spec?.modelName === model && s.spec?.modelVersion === version);
+  if (!mine.length) return null;
+  // Most recent wins: a periodic recheck supersedes the registry scan it redid.
+  mine.sort((a, b) => new Date(b.metadata.creationTimestamp) - new Date(a.metadata.creationTimestamp));
+  return mine[0].spec?.trigger || null;
+}
+
+function triggerBadge(t) {
+  if (!t) return '<span class="trig unknown" title="This scan predates trigger recording">—</span>';
+  return `<span class="trig ${cls(t)}" title="${esc(TRIGGER_HELP[t] || '')}">${esc(t)}</span>`;
+}
+
+function renderInventory(allReports) {
+  const tbody = document.getElementById('inv');
+  // The stat cards double as the verdict filter.
+  let reports = filters.verdict
+    ? allReports.filter(r => (r.status?.verdict || 'Unknown') === filters.verdict)
+    : allReports;
+  if (filters.trigger) {
+    reports = reports.filter(r =>
+      triggerFor(r.spec?.modelName, r.spec?.modelVersion) === filters.trigger);
+  }
+
+  renderStats(allReports);
+  renderFilterChips('invfilters', ['verdict', 'trigger']);
+
+  if (!reports.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty">${
+      allReports.length ? 'No models match this filter.' : 'No models scanned yet.'}</td></tr>`;
+    return;
+  }
+  // Default to the worst model, which is the one worth looking at first.
+  if (!selected || !reports.some(r => keyOf(r.spec?.modelName, r.spec?.modelVersion) === keyOf(selected.model, selected.version))) {
+    const worst = [...reports].sort((a, b) => (b.status?.riskScore ?? 0) - (a.status?.riskScore ?? 0))[0];
+    selected = { model: worst.spec.modelName, version: worst.spec.modelVersion };
+  }
+
+  tbody.innerHTML = reports.map(r => {
+    const st = r.status || {}, sp = r.spec || {};
+    const risk = st.riskScore ?? 0;
+    const isSel = keyOf(sp.modelName, sp.modelVersion) === keyOf(selected.model, selected.version);
+    return `<tr data-model="${esc(sp.modelName)}" data-version="${esc(sp.modelVersion)}"
+                class="click ${isSel ? 'sel' : ''}" tabindex="0" role="button"
+                aria-label="Show findings for ${esc(sp.modelName)} ${esc(sp.modelVersion)}">
+      <td>${esc(sp.modelName)}</td>
+      <td class="mono">${esc(sp.modelVersion)}</td>
+      <td><span class="pill tag ${cls(st.verdict)}" data-verdict="${esc(st.verdict || 'Unknown')}" title="Filter by this verdict">${esc(st.verdict || 'Unknown')}</span></td>
+      <td><span class="risk ${riskClass(risk)}">${risk}</span></td>
+      <td data-trigfilter="${esc(triggerFor(sp.modelName, sp.modelVersion) || '')}">${triggerBadge(triggerFor(sp.modelName, sp.modelVersion))}</td>
+      <td><span class="pill ${st.malware === 'Detected' ? 'quarantined' : st.malware === 'Clean' ? 'approved' : 'unknown'}">${esc(st.malware || 'Unknown')}</span></td>
+      <td><span class="pill ${st.secrets === 'Detected' ? 'quarantined' : st.secrets === 'Clean' ? 'approved' : 'unknown'}">${esc(st.secrets || 'Unknown')}</span></td>
+      <td class="mono">${ago(st.lastScanTime)}</td>
+    </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('tr[data-model]').forEach(tr => {
+    const pick = () => { selected = { model: tr.dataset.model, version: tr.dataset.version }; refresh(); };
+    tr.onclick = pick;
+    tr.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
+  });
+
+  // Trigger badges filter too, so "show me everything a deployment forced"
+  // is one click.
+  tbody.querySelectorAll('[data-trigfilter]').forEach(el => el.onclick = ev => {
+    const t = el.dataset.trigfilter;
+    if (!t) return;
+    ev.stopPropagation();
+    filters.trigger = filters.trigger === t ? null : t;
+    refresh();
+  });
+
+  // The verdict pill filters instead of selecting, so stop the row handler.
+  tbody.querySelectorAll('[data-verdict]').forEach(el => el.onclick = ev => {
+    ev.stopPropagation();
+    filters.verdict = filters.verdict === el.dataset.verdict ? null : el.dataset.verdict;
+    refresh();
+  });
+}
+
+// Each card is a verdict filter; clicking the active one clears it.
+function renderStats(reports) {
+  const worst = Math.max(0, ...reports.map(r => r.status?.riskScore ?? 0));
+  const by = v => reports.filter(r => (r.status?.verdict || 'Unknown') === v).length;
+  const cards = [
+    ['Models', reports.length, null],
+    ['Quarantined', by('Quarantined'), 'Quarantined'],
+    ['Highest risk', worst, null],
+    ['Approved', by('Approved'), 'Approved'],
+  ];
+  document.getElementById('stats').innerHTML = cards.map(([k, v, verdict]) =>
+    `<div class="stat ${verdict && filters.verdict === verdict ? 'on' : ''}" tabindex="0" role="button"
+          ${verdict ? `data-verdict="${verdict}"` : 'data-verdict=""'}
+          title="${verdict ? `Show only ${verdict}` : 'Show all models'}">
+       <b>${v}</b><span>${k}</span>
+     </div>`).join('');
+
+  document.querySelectorAll('#stats .stat').forEach(el => {
+    const pick = () => {
+      const v = el.dataset.verdict;
+      filters.verdict = (!v || filters.verdict === v) ? null : v;
+      refresh();
+    };
+    el.onclick = pick;
+    el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } };
+  });
+}
+
+// ---------------------------------------------------------------- run a scan
+
+const FIXTURE = 'http://model-fixture.assay-system.svc.cluster.local';
+const ALL_SCANNERS = ['clamav', 'trivy', 'syft', 'trufflehog', 'model-inspector'];
+
+const PRESETS = [
+  // The first two run the *same* scan — all five scanners — and differ only in
+  // which artifact they point at. That pair is the demonstration: a scanner
+  // that only ever says "bad" is worthless, so showing Approved beside
+  // Quarantined is what proves it discriminates. The third narrows the scan
+  // instead of the artifact, to isolate what the model inspector alone sees.
+  {
+    label: 'Poisoned artifact',
+    hint: 'EICAR · pickle RCE · CVEs · credentials',
+    expect: 'Quarantined',
+    model: 'fraud-detector', primary: true,
+    uri: 'pvc://model-store/fraud-detector/v3.0.0', format: 'pytorch',
+    scanners: ALL_SCANNERS,
+  },
+  {
+    label: 'Clean artifact',
+    hint: 'safetensors · no code path on load',
+    expect: 'Approved',
+    model: 'llama-guard',
+    uri: `${FIXTURE}/model.safetensors`, format: 'safetensors',
+    scanners: ALL_SCANNERS,
+  },
+  {
+    label: 'Poisoned, inspector only',
+    hint: 'protocol-5 pickle calling os.system',
+    expect: 'Quarantined',
+    model: 'sentiment-classifier',
+    uri: `${FIXTURE}/pytorch_model.bin`, format: 'pytorch',
+    scanners: ['model-inspector'],
+  },
+];
+
+// Kubernetes names: lowercase alphanumeric plus '-' and '.'.
+const k8sName = s => s.toLowerCase().replace(/[^a-z0-9.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 200);
+
+// Mirrors the buildable set in internal/scanners/catalog.go. Naming one that
+// has no image would be rejected by the operator, so they are not offered.
+const SCANNER_CHOICES = [
+  ['clamav', 'malware'], ['trivy', 'CVEs'], ['grype', 'CVEs'],
+  ['syft', 'SBOM'], ['trufflehog', 'secrets'],
+  ['model-inspector', 'model format'], ['provenance', 'signatures'],
+];
+
+// Presets fill the form rather than firing immediately: the point is to show
+// what a scan request is made of, and let it be edited before it runs.
+function renderRunbar() {
+  document.getElementById('runbar').innerHTML = PRESETS.map((p, i) =>
+    `<button type="button" class="rbtn ${p.primary ? 'primary' : ''}" data-preset="${i}"
+              title="Fills the form below — ${esc(p.scanners.length)} scanner(s)">
+       <b>${esc(p.label)} <span class="pill ${cls(p.expect)}">${esc(p.expect)}</span></b>
+       <span>${esc(p.hint)}</span>
+     </button>`).join('');
+  document.querySelectorAll('.rbtn[data-preset]').forEach(b =>
+    b.onclick = () => fillForm(PRESETS[+b.dataset.preset]));
+}
+
+function renderScannerChoices() {
+  document.getElementById('f-scanners').innerHTML = SCANNER_CHOICES.map(([n, what]) =>
+    `<label class="chk" title="${esc(what)}">
+       <input type="checkbox" value="${n}"> ${n}
+     </label>`).join('');
+  document.querySelectorAll('#f-scanners .chk').forEach(l => {
+    const cb = l.querySelector('input');
+    const sync = () => l.classList.toggle('on', cb.checked);
+    cb.onchange = () => { sync(); updatePreview(); };
+    sync();
+  });
+  document.getElementById('f-allscan').onclick = () => setScanners(SCANNER_CHOICES.map(([n]) => n));
+  document.getElementById('f-nonescan').onclick = () => setScanners([]);
+}
+
+function setScanners(names) {
+  document.querySelectorAll('#f-scanners input').forEach(cb => {
+    cb.checked = names.includes(cb.value);
+    cb.dispatchEvent(new Event('change'));
+  });
+}
+
+const formValues = () => ({
+  model: document.getElementById('f-model').value.trim(),
+  version: document.getElementById('f-version').value.trim(),
+  uri: document.getElementById('f-uri').value.trim(),
+  format: document.getElementById('f-format').value,
+  policy: document.getElementById('f-policy').value,
+  scanners: [...document.querySelectorAll('#f-scanners input:checked')].map(c => c.value),
+});
+
+function fillForm(p) {
+  document.getElementById('f-model').value = p.model;
+  document.getElementById('f-version').value = '';
+  document.getElementById('f-uri').value = p.uri;
+  document.getElementById('f-format').value = p.format || '';
+  document.getElementById('f-policy').value = policyNames.includes('full-policy') ? 'full-policy' : '';
+  setScanners(p.scanners);
+  updatePreview();
+  document.getElementById('f-uri').focus();
+}
+
+// Naming the object up front makes the request concrete: this is exactly what
+// will be created, and it is what you would kubectl get afterwards.
+function updatePreview() {
+  const v = formValues();
+  const el = document.getElementById('f-preview');
+  const hint = document.getElementById('f-urihint');
+  if (!v.model || !v.uri) { el.textContent = ''; return; }
+  const name = v.version
+    ? k8sName(`${v.model}-${v.version}`)
+    : `${k8sName(v.model)}-demo-HHMMSS`;
+  el.textContent = `→ ArtifactScan/${name}  ·  ${v.scanners.length || 'policy default'} scanner${v.scanners.length === 1 ? '' : 's'}`;
+
+  let scheme = (v.uri.match(/^([a-z0-9+.-]+):\/\//i) || [])[1];
+  // A huggingface.co URL pasted from a browser is resolved by the hub
+  // resolver, not by the generic HTTPS one.
+  if (/^https?:\/\/(www\.)?huggingface\.co\//i.test(v.uri)) scheme = 'hf';
+  // Must match the resolvers registered in internal/resolver.NewRegistry.
+  const known = { s3: 'object storage (also ODF and MinIO)', oci: 'an OCI registry',
+                  modelcar: 'a ModelCar image', pvc: 'a PersistentVolumeClaim',
+                  hf: 'the Hugging Face Hub, pinned to the current commit',
+                  http: 'a URL', https: 'a URL' };
+  hint.textContent = !scheme
+    ? 'Needs a scheme: hf://  s3://  oci://  modelcar://  pvc://  https://'
+    : known[scheme.toLowerCase()]
+      ? `Resolves from ${known[scheme.toLowerCase()]}.`
+      : `No resolver is registered for "${scheme}://" — the fetch step will fail.`;
+}
+
+function say(text, bad) {
+  document.getElementById('runmsg').innerHTML = `<div class="msg ${bad ? 'bad' : ''}">${text}</div>`;
+}
+
+async function runScan(req, btn) {
+  // Default to a fresh version per run, for two reasons: each scan shows up as
+  // its own inventory row rather than overwriting the last, and a unique scan
+  // name cannot match leftover reports from an earlier run of the same name.
+  const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+  const version = req.version || `demo-${stamp}`;
+  const name = k8sName(`${req.model}-${version}`);
+
+  const spec = {
+    modelName: req.model,
+    modelVersion: version,
+    artifact: { uri: req.uri },
+    // A scan somebody asked for reads differently afterwards from one a
+    // registry produced or a deployment forced.
+    trigger: 'Manual',
+    triggeredBy: 'console',
+  };
+  // Omit rather than send empty: an empty scanners list means "policy default"
+  // to the operator, and an empty policyRef would look like a missing policy.
+  if (req.format) spec.artifact.format = req.format;
+  if (req.policy) spec.policyRef = req.policy;
+  if (req.scanners?.length) spec.scanners = req.scanners;
+
+  const body = {
+    apiVersion: 'security.davano.io/v1alpha1',
+    kind: 'ArtifactScan',
+    metadata: { name, namespace: NS, labels: { 'security.davano.io/trigger': 'Manual' } },
+    spec,
+  };
+
+  if (btn) btn.disabled = true;
+  say(`Creating <span class="mono">ArtifactScan/${esc(name)}</span>…`);
+  try {
+    await api('/scans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        modelName: req.model, modelVersion: version, uri: req.uri,
+        format: req.format || '', policyRef: req.policy || '',
+        scanners: req.scanners || [],
+      }),
+    });
+    selected = { model: req.model, version };
+    filters.verdict = null;
+    const n = req.scanners?.length;
+    say(`Scanning <b>${esc(req.model)} ${esc(version)}</b> with
+         ${n ? `${n} scanner${n === 1 ? '' : 's'}` : "the policy's default scanners"}.
+         Watch the phase below.`);
+    refresh();
+  } catch (e) {
+    say(`Could not create the scan: ${esc(e.message)}`, true);
+  } finally {
+    setTimeout(() => { if (btn && btn.isConnected) btn.disabled = false; }, 1500);
+  }
+}
+
+function renderActive(scans) {
+  const running = scans.filter(s => (s.status?.phase || 'Pending') !== 'Completed');
+  const panel = document.getElementById('activepanel');
+  panel.hidden = running.length === 0;
+  if (!running.length) return;
+
+  document.getElementById('active').innerHTML = running.map(s => {
+    const st = s.status || {}, sp = s.spec || {};
+    const done = (st.results || []).filter(r => r.status === 'Passed' || r.status === 'Failed').length;
+    const total = (sp.scanners || []).length || (st.results || []).length;
+    return `<tr class="click" data-model="${esc(sp.modelName)}" data-version="${esc(sp.modelVersion)}"
+                title="Show this model below">
+      <td class="mono">${esc(s.metadata.name)}</td>
+      <td>${esc(sp.modelName)}</td>
+      <td class="mono">${esc(sp.modelVersion)}</td>
+      <td><span class="phase ${cls(st.phase || 'Pending')}">${esc(st.phase || 'Pending')}</span></td>
+      <td class="mono">${done}/${total || '?'}</td>
+      <td>${st.verdict ? `<span class="pill ${cls(st.verdict)}">${esc(st.verdict)}</span>` : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  document.querySelectorAll('#active tr[data-model]').forEach(tr =>
+    tr.onclick = () => { selected = { model: tr.dataset.model, version: tr.dataset.version }; refresh(); });
+}
+
+const SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3, unknown: 4 };
+
+function renderFindings(scanReports, scans, sel) {
+  document.getElementById('findings-for').textContent =
+    sel ? `Findings — ${sel.model} ${sel.version}` : 'Scan findings';
+
+  // Reports carry scanRef; the ArtifactScan carries the model and version.
+  // Filtering through that mapping is what keeps one model's issues from
+  // showing up under another.
+  const scanBelongs = new Set(
+    (scans || [])
+      .filter(s => !sel || (s.spec?.modelName === sel.model && s.spec?.modelVersion === sel.version))
+      .map(s => s.metadata.name)
+  );
+
+  const everything = [];
+  for (const rep of scanReports) {
+    if (sel && !scanBelongs.has(rep.scanRef)) continue;
+    for (const f of rep.findings || []) everything.push({ ...f, scanner: rep.scanner || '—' });
+  }
+
+  // Scanner and severity filters come from clicking the table, so the counts
+  // above always describe the unfiltered set and the rows show the narrowed one.
+  const all = everything.filter(f =>
+    (!filters.scanner || f.scanner === filters.scanner) &&
+    (!filters.severity || cls(f.severity) === cls(filters.severity)));
+  renderFilterChips('findfilters', ['scanner', 'severity']);
+
+  // Severity roll-up for the selected version, so the scale of the problem is
+  // visible before anything is expanded.
+  const counts = everything.reduce((a, f) => { const k = cls(f.severity); a[k] = (a[k] || 0) + 1; return a; }, {});
+  const sum = document.getElementById('findings-summary');
+  sum.innerHTML = everything.length
+    ? ['critical', 'high', 'medium', 'low'].filter(s => counts[s])
+        .map(s => `<span class="sev tag ${s} ${filters.severity === s ? 'on' : ''}" data-sev="${s}"
+                     title="Show only ${s}">${counts[s]} ${s}</span>`).join('')
+      + `<span class="fcount">${everything.length} total across ${new Set(everything.map(f => f.scanner)).size} scanners</span>`
+    : '';
+  sum.querySelectorAll('[data-sev]').forEach(el => el.onclick = () => {
+    filters.severity = filters.severity === el.dataset.sev ? null : el.dataset.sev;
+    refresh();
+  });
+  all.sort((a, b) => (SEV_ORDER[cls(a.severity)] ?? 9) - (SEV_ORDER[cls(b.severity)] ?? 9));
+
+  const tbody = document.getElementById('findings');
+  if (!all.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty">No findings recorded.</td></tr>';
+    return;
+  }
+
+  // Preserve which rows were open across the 4s refresh, keyed on the finding
+  // itself — otherwise a detail panel would snap shut while being read.
+  const open = new Set([...tbody.querySelectorAll('tr.open')].map(tr => tr.dataset.key));
+
+  tbody.innerHTML = all.map((f, i) => {
+    const key = `${f.scanner}:${f.id}:${f.location || i}`;
+    const isOpen = open.has(key);
+    // A CVE id is the one finding identifier with an authoritative page behind
+    // it, so it becomes a link out rather than plain text.
+    const cve = /^CVE-\d{4}-\d{4,}$/.test(f.id || '');
+    const idCell = cve
+      ? `<a class="ext" href="https://nvd.nist.gov/vuln/detail/${encodeURIComponent(f.id)}"
+            target="_blank" rel="noopener noreferrer" title="Look up on NVD">${esc(f.id)}</a>`
+      : esc(f.id);
+
+    const detail = [
+      ['Finding', idCell],
+      ['Category', esc(f.category || '—')],
+      ['Location', esc(f.location || '—')],
+      ['Detail', esc(f.description || '—')],
+      ['Scanner', `<span class="lnk" data-scanner="${esc(f.scanner)}">${esc(f.scanner)}</span>`],
+    ].map(([k, v]) => `<div class="drow"><span class="dk">${k}</span><span class="dv${k === 'Location' ? ' mono' : ''}">${v}</span></div>`).join('');
+
+    return `<tr class="fx ${isOpen ? 'open' : ''}" data-key="${esc(key)}" tabindex="0"
+                role="button" aria-expanded="${isOpen}" aria-label="Detail for ${esc(f.id)}">
+        <td><span class="sev tag ${cls(f.severity)}" data-sev="${cls(f.severity)}" title="Filter by severity">${esc(f.severity)}</span></td>
+        <td><span class="chev">▸</span> <span class="fid">${esc(f.id)}</span> ${esc(f.title || '')}</td>
+        <td class="mono"><span class="lnk" data-scanner="${esc(f.scanner)}" title="Show only this scanner">${esc(f.scanner)}</span></td>
+      </tr>
+      <tr class="detail" data-for="${esc(key)}" ${isOpen ? '' : 'hidden'}>
+        <td colspan="3"><div class="dwrap">${detail}</div></td>
+      </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('tr.fx').forEach(tr => {
+    const toggle = () => {
+      const d = tbody.querySelector(`tr.detail[data-for="${CSS.escape(tr.dataset.key)}"]`);
+      tr.classList.toggle('open');
+      const open = tr.classList.contains('open');
+      tr.setAttribute('aria-expanded', String(open));
+      if (d) d.hidden = !open;
+    };
+    tr.onclick = toggle;
+    tr.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } };
+  });
+
+  // Filters and links live inside clickable rows, so they must not also toggle
+  // the row open.
+  tbody.querySelectorAll('[data-scanner]').forEach(el => el.onclick = ev => {
+    ev.stopPropagation();
+    filters.scanner = filters.scanner === el.dataset.scanner ? null : el.dataset.scanner;
+    refresh();
+  });
+  tbody.querySelectorAll('[data-sev]').forEach(el => el.onclick = ev => {
+    ev.stopPropagation();
+    filters.severity = filters.severity === el.dataset.sev ? null : el.dataset.sev;
+    refresh();
+  });
+  tbody.querySelectorAll('a.ext').forEach(a => a.onclick = ev => ev.stopPropagation());
+}
+
+function renderCompliance(reports, sel) {
+  const el = document.getElementById('compliance');
+  const mine = reports.filter(r => !sel ||
+    (r.spec?.modelName === sel.model && r.spec?.modelVersion === sel.version));
+  if (!mine.length) { el.innerHTML = '<div class="panel"><div class="empty">No compliance profile applies to this model.</div></div>'; return; }
+
+  el.innerHTML = mine.map(r => {
+    const st = r.status || {};
+    const bars = (st.summary || []).map(s => {
+      const parts = [
+        ['satisfied', s.satisfied || 0, 'var(--low)'],
+        ['attested', s.attested || 0, 'var(--accent)'],
+        ['partial', s.partial || 0, 'var(--medium)'],
+        ['awaiting', s.awaitingAttestation || 0, 'var(--text-faint)'],
+        ['not satisfied', s.notSatisfied || 0, 'var(--critical)'],
+        ['n/a', s.notApplicable || 0, 'var(--border-bright)'],
+      ];
+      const total = parts.reduce((a, [, n]) => a + n, 0) || 1;
+      const open = (s.partial || 0) + (s.awaitingAttestation || 0) + (s.notSatisfied || 0);
+      // Each function expands into its individual controls: a bar saying "6
+      // open" is only actionable once you can see which six, and why.
+      const controls = (st.controls || []).filter(c => c.function === s.function);
+      const rows = controls.map(c => `<div class="ctl">
+          <span><span class="cstat ${cls(c.status)}">${esc(c.status)}</span><br>
+                <span class="cid">${esc(c.controlID)}</span></span>
+          <span class="creason">${esc(c.reason || '—')}</span>
+        </div>`).join('');
+      const fnKey = `${r.metadata.name}:${s.function}`;
+      return `<div class="brow click" data-fn="${esc(fnKey)}" tabindex="0" role="button" title="Show the ${controls.length} controls in ${esc(s.function)}">
+          <span class="fn"><span class="chev">▸</span> ${esc(s.function)}</span>
+          <span class="track">${parts.map(([, n, c]) => n ? `<i style="width:${(n / total * 100).toFixed(1)}%;background:${c}"></i>` : '').join('')}</span>
+          <span class="mono" style="color:var(--text-faint)">${open} open</span>
+        </div>
+        <div class="ctls" data-for="${esc(fnKey)}" hidden>${rows || '<div class="ctl"><span class="creason">No control detail recorded.</span></div>'}</div>`;
+    }).join('');
+
+    return `<div class="panel">
+      <div class="bars">
+        <div class="brow" style="margin-bottom:4px">
+          <span class="fn" style="color:var(--text)">${esc(r.spec.framework)}</span>
+          <span class="mono" style="color:var(--text-faint)">${st.totalControls || 0} controls · ${st.automatableFull || 0} full · ${st.automatablePartial || 0} partial · ${st.attestationOnly || 0} attestation-only</span>
+          <span><span class="pill ${st.conformant ? 'satisfied' : 'notsatisfied'}">${st.conformant ? 'Conformant' : (st.openControlCount || 0) + ' open'}</span></span>
+        </div>
+        ${bars}
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--low)"></i>satisfied</span>
+        <span><i style="background:var(--accent)"></i>attested</span>
+        <span><i style="background:var(--medium)"></i>partial</span>
+        <span><i style="background:var(--text-faint)"></i>awaiting attestation</span>
+        <span><i style="background:var(--critical)"></i>not satisfied</span>
+      </div>
+      ${(st.unmeasuredCharacteristics || []).length ? `<div class="legend" style="border-top:1px solid var(--border);padding-top:12px">
+        <span style="color:var(--text-dim)">Not measured by this scan: ${st.unmeasuredCharacteristics.map(esc).join(' · ')}</span></div>` : ''}
+    </div>`;
+  }).join('');
+
+  // Expansion state is kept out of the 2s refresh by re-applying it here.
+  el.querySelectorAll('.brow.click').forEach(row => {
+    const fn = row.dataset.fn;
+    const body = el.querySelector(`.ctls[data-for="${CSS.escape(fn)}"]`);
+    if (openFunctions.has(fn)) { row.classList.add('open'); if (body) body.hidden = false; }
+    row.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); } };
+    row.onclick = () => {
+      const nowOpen = !row.classList.contains('open');
+      row.classList.toggle('open', nowOpen);
+      if (body) body.hidden = !nowOpen;
+      nowOpen ? openFunctions.add(fn) : openFunctions.delete(fn);
+    };
+  });
+}
+
+// ------------------------------------------------------------ review queue
+//
+// Lives in a drawer rather than on the page: it is a task you go and do, not
+// something to scroll past. A row expands into the findings behind the verdict,
+// because accepting a risk you cannot read is not a decision.
+
+let queueState = { models: [], exceptions: [], reports: [], scans: [] };
+
+// What a reviewer is allowed to accept. Malware detection is deliberately
+// absent: a confirmed detection is not a judgement call, and offering a button
+// that silently fails to clear it is worse than not offering one.
+const WAIVABLE = ['blockUnsafeModel', 'scanIncomplete', 'maxCriticalCVEs', 'maxHighCVEs',
+                  'requireSignature', 'requireProvenance', 'requireSBOM',
+                  'allowedFormats', 'blockedFormats'];
+const UNWAIVABLE_REASON = {
+  blockMalware: 'a confirmed malware detection cannot be accepted here',
+  blockSecrets: 'an embedded credential must be removed, not accepted — rotate it and rescan',
+};
+
+// The violations on a scan, split into what this button can and cannot clear.
+function violationsFor(model, version) {
+  const scan = queueState.scans.find(s =>
+    s.spec?.modelName === model && s.spec?.modelVersion === version);
+  const msg = scan?.status?.message || '';
+  const rules = [...msg.matchAll(/([a-zA-Z]+):/g)].map(m => m[1]);
+  const blocking = [...new Set(rules)].filter(r => UNWAIVABLE_REASON[r]);
+  return { message: msg, blocking };
+}
+
+function pendingCount() {
+  const decided = new Set(queueState.exceptions.map(e =>
+    keyOf(e.spec?.modelName, e.spec?.modelVersion)));
+  return queueState.models.filter(m => {
+    const v = m.status?.verdict;
+    return (v === 'ReviewRequired' || v === 'Quarantined')
+      && !decided.has(keyOf(m.spec?.modelName, m.spec?.modelVersion));
+  }).length;
+}
+
+function updateQueueBadge() {
+  const n = pendingCount();
+  const b = document.getElementById('queue-badge');
+  b.textContent = n;
+  b.hidden = n === 0;
+}
+
+// Which queue rows are expanded, and the last message. The drawer re-renders
+// every poll, and without this an expanded row snapped shut mid-read and the
+// unsigned-waiver warning — the single most important thing this console can
+// say — was gone in under two seconds.
+const openQueueRows = new Set();
+const reasonDrafts = new Map();
+let queueMessage = null;
+
+function renderQueueDrawer() {
+  const decided = new Map();
+  for (const e of queueState.exceptions) {
+    decided.set(keyOf(e.spec?.modelName, e.spec?.modelVersion), e);
+  }
+  const rows = queueState.models
+    .filter(m => ['ReviewRequired', 'Quarantined'].includes(m.status?.verdict))
+    .map(m => ({
+      model: m.spec.modelName, version: m.spec.modelVersion,
+      verdict: m.status.verdict, risk: m.status.riskScore ?? 0,
+      ex: decided.get(keyOf(m.spec.modelName, m.spec.modelVersion)),
+    }))
+    .sort((a, b) => (a.ex ? 1 : 0) - (b.ex ? 1 : 0) || b.risk - a.risk);
+
+  const unsigned = queueState.exceptions.filter(e => !(e.spec || {}).approvedBy).length;
+  const stats = [
+    ['Awaiting decision', rows.filter(r => !r.ex).length],
+    ['Risk accepted', rows.filter(r => r.ex).length],
+    ['Unattributed', unsigned],
+  ].map(([k, v]) => `<div class="stat" style="cursor:default"><b>${v}</b><span>${k}</span></div>`).join('');
+
+  const body = rows.length ? rows.map(r => {
+    const sp = r.ex?.spec || {};
+    const signed = !!sp.approvedBy;
+    const key = keyOf(r.model, r.version);
+    const state = r.ex
+      ? (signed
+          ? `<span class="pill approved">Risk accepted</span>`
+          : `<span class="pill reviewrequired">Accepted, unsigned</span>`)
+      : '<span class="pill unknown">Awaiting decision</span>';
+    const who = signed
+      ? `<span class="mono">${esc(sp.approvedBy)}</span> · ${esc(ago(sp.approvedAt))}`
+      : (r.ex ? '<span class="mono" style="color:var(--critical)">unattributed</span>' : '');
+    return `<div class="qrow ${openQueueRows.has(key) ? 'open' : ''}">
+      <div class="qhead" data-expand="${esc(key)}" role="button" tabindex="0"
+           aria-expanded="false" aria-label="Findings for ${esc(r.model)} ${esc(r.version)}">
+        <span class="chev">▸</span>
+        <span class="qname"><b>${esc(r.model)}</b> <span class="mono">${esc(r.version)}</span></span>
+        <span class="pill ${cls(r.verdict)}">${esc(r.verdict)}</span>
+        <span class="risk ${riskClass(r.risk)}">${r.risk}</span>
+        ${state}
+      </div>
+      <div class="qdetail" data-for="${esc(key)}" ${openQueueRows.has(key) ? '' : 'hidden'}>
+        <div class="qfindings" data-findings="${esc(key)}">Loading findings…</div>
+        ${r.ex
+          ? `<div class="drow"><span class="dk">Accepted</span><span class="dv">${esc(sp.reason || '')}</span></div>
+             <div class="drow"><span class="dk">By</span><span class="dv">${who || '—'}</span></div>`
+          : (() => {
+              const v = violationsFor(r.model, r.version);
+              const blocked = v.blocking.length
+                ? `<div class="msg bad" style="margin:0">Accepting this will <b>not</b> clear the verdict:
+                     ${v.blocking.map(b => esc(UNWAIVABLE_REASON[b])).join('; ')}.
+                     The record is still kept, but the model stays blocked.</div>`
+                : '';
+              return `<div class="acceptbox">
+               ${blocked}
+               <label class="fld">
+                 <span>Why is this acceptable?</span>
+                 <textarea id="reason-${esc(key)}" rows="2" spellcheck="true"
+                   placeholder="e.g. reviewed with the model owner; the flagged call compiles CUDA kernels"></textarea>
+                 <small>Recorded against your identity and not editable afterwards.</small>
+               </label>
+               <div class="factions">
+                 <button type="button" class="rbtn primary" style="min-width:0"
+                   data-accept="${esc(r.model)}" data-version="${esc(r.version)}"
+                   data-key="${esc(key)}"><b>Accept this risk</b></button>
+               </div>
+             </div>`;
+            })()}
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty">Nothing is waiting on a decision.</div>';
+
+  document.getElementById('drawer-body').innerHTML = `
+    <p class="note" style="margin-top:0">A <span class="mono">ReviewRequired</span> or
+      <span class="mono">Quarantined</span> verdict is a question, not an outcome. Expand a row to
+      read the findings behind it before deciding — accepting a risk you have not read is not a
+      decision. Accepting one records who accepted it, when and why, from your authenticated
+      identity rather than a name typed into a form.</p>
+    <div class="stats" style="grid-template-columns:repeat(3,1fr)">${stats}</div>
+    <div id="queuemsg">${queueMessage || ''}</div>
+    <div style="margin-top:16px">${body}</div>`;
+
+  document.querySelectorAll('#drawer-body [data-expand]').forEach(h => {
+    h.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); h.click(); } };
+    h.onclick = () => {
+    const k = h.dataset.expand;
+    const d = document.querySelector(`#drawer-body .qdetail[data-for="${CSS.escape(k)}"]`);
+    const open = d.hidden;
+    d.hidden = !open;
+    h.parentElement.classList.toggle('open', open);
+      h.setAttribute('aria-expanded', String(open));
+      if (open) { openQueueRows.add(k); fillQueueFindings(k); } else { openQueueRows.delete(k); }
+    };
+  });
+  // Rows that were open before this re-render need their findings back.
+  openQueueRows.forEach(k => {
+    const head = document.querySelector(`#drawer-body [data-expand="${CSS.escape(k)}"]`);
+    if (head) head.setAttribute('aria-expanded', 'true');
+    fillQueueFindings(k);
+  });
+  document.querySelectorAll('#drawer-body [data-accept]').forEach(b =>
+    b.onclick = () => acceptRisk(b.dataset.accept, b.dataset.version, b));
+  // Keep what someone has typed across the 2s re-render.
+  document.querySelectorAll('#drawer-body textarea[id^="reason-"]').forEach(t => {
+    const saved = reasonDrafts.get(t.id);
+    if (saved !== undefined) t.value = saved;
+    t.oninput = () => reasonDrafts.set(t.id, t.value);
+  });
+}
+
+// The findings behind one model, rendered inside its queue row so the decision
+// and the evidence are in the same place.
+function fillQueueFindings(key) {
+  const el = document.querySelector(`#drawer-body [data-findings="${CSS.escape(key)}"]`);
+  if (!el) return;
+  const [model, version] = key.split('@');
+  const mine = new Set(queueState.scans
+    .filter(s => s.spec?.modelName === model && s.spec?.modelVersion === version)
+    .map(s => s.metadata.name));
+  const found = [];
+  for (const rep of queueState.reports) {
+    if (!mine.has(rep.scanRef)) continue;
+    for (const f of rep.findings || []) found.push({ ...f, scanner: rep.scanner });
+  }
+  if (!found.length) { el.innerHTML = '<div class="empty">No findings recorded for this version.</div>'; return; }
+  found.sort((a, b) => (SEV_ORDER[cls(a.severity)] ?? 9) - (SEV_ORDER[cls(b.severity)] ?? 9));
+  el.innerHTML = found.slice(0, 40).map(f => `
+    <div class="qf">
+      <span class="sev ${cls(f.severity)}">${esc(f.severity)}</span>
+      <span><span class="fid">${esc(f.id)}</span> ${esc(f.title || '')}
+        ${f.location ? `<br><span class="mono" style="color:var(--text-faint);font-size:.74rem">${esc(f.location)}</span>` : ''}
+        ${f.description ? `<br><span style="color:var(--text-dim);font-size:.82rem">${esc(f.description)}</span>` : ''}
+      </span>
+    </div>`).join('')
+    + (found.length > 40 ? `<div class="empty">…and ${found.length - 40} more</div>` : '');
+}
+
+function sayQueue(html, bad) {
+  queueMessage = `<div class="msg ${bad ? 'bad' : ''}">${html}</div>`;
+  const el = document.getElementById('queuemsg');
+  if (el) el.innerHTML = queueMessage;
+}
+
+// Creating the exception is the whole disposition. The signing webhook stamps
+// the authenticated identity onto it, so nothing here decides who gets credit.
+async function acceptRisk(model, version, btn) {
+  const field = document.getElementById(`reason-${btn.dataset.key}`);
+  const reason = (field?.value || '').trim();
+  if (!reason) {
+    sayQueue('A reason is required — an unexplained waiver is indistinguishable from a mistake.', true);
+    field?.focus();
+    return;
+  }
+
+  // The server stamps the approver from the authenticated session and refuses
+  // whatever the page claims: an identity a user can type is not a signature.
+  const exceptionPayload = {
+    modelName: model, modelVersion: version,
+    // Waive the rules a human can actually accept. A malware detection is
+    // deliberately absent: that is not a judgement call.
+    rules: WAIVABLE,
+    reason,
+  };
+
+  btn.disabled = true;
+  try {
+    await api('/exceptions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(exceptionPayload),
+    });
+    const created = await r.json();
+    const v = violationsFor(model, version);
+    if (v.blocking.length) {
+      sayQueue(`Recorded your acceptance for <b>${esc(model)} ${esc(version)}</b>, but the verdict
+        stands: ${v.blocking.map(b => esc(UNWAIVABLE_REASON[b])).join('; ')}.`, true);
+      refresh();
+      return;
+    }
+    const by = created.spec?.approvedBy;
+    if (by) {
+      sayQueue(`Risk accepted for <b>${esc(model)} ${esc(version)}</b>, signed as
+        <span class="mono">${esc(by)}</span>. The verdict updates within a few seconds.`);
+    } else {
+      sayQueue(`Risk accepted for <b>${esc(model)} ${esc(version)}</b>, but <b>the record is unsigned</b>:
+        the signing webhook did not stamp an identity, so this acceptance is not attributable to anyone.
+        Install the <span class="mono">assay-exception-signer</span> webhook before relying on this as
+        an audit trail.`, true);
+    }
+    refresh();
+  } catch (e) {
+    sayQueue(`Could not record the acceptance: ${esc(e.message)}`, true);
+  } finally {
+    // The drawer re-renders on the next poll and detaches this node, so only
+    // touch it if it is still in the document.
+    setTimeout(() => { if (btn && btn.isConnected) btn.disabled = false; }, 1500);
+  }
+}
+
+// ------------------------------------------------------------------- the CLI
+function cliDrawer() {
+  const img = 'docker.io/davanolab/assay-operator:0.1.0';
+  const blocks = [
+    ['Run it from the operator image — nothing to install',
+     `docker run --rm --network none -v "$PWD/model:/m:ro" \\\n  --entrypoint /assay ${img} inspect /m`],
+    ['Copy the binary out of the running operator',
+     `kubectl cp -n ${NS} "$(kubectl get pod -n ${NS} -l app.kubernetes.io/component=controller \\\n  -o jsonpath='{.items[0].metadata.name}')":/assay ./assay\nchmod +x ./assay`],
+    ['Scan a public model straight from the hub',
+     `./assay inspect hf://openai-community/gpt2`],
+    ['Use it as a CI gate',
+     `./assay inspect --json ./model > report.json\n# exit 0 approved · 2 review required · 3 quarantined · 1 scan failed`],
+  ];
+  document.getElementById('drawer-body').innerHTML = `
+    <p class="note" style="margin-top:0">The same inspector and policy engine run as a single static
+      binary, so a model can be checked before it is registered anywhere — including a public one
+      still on someone else&rsquo;s hub. The operator image already carries it, so there is nothing to
+      download and nothing to keep in step: the binary you copy is the one that ran your scans.</p>
+    ${blocks.map(([label, cmd], i) => `
+      <div class="fld" style="margin-bottom:14px">
+        <span>${esc(label)} <button type="button" class="lnk" data-copy="${i}">copy</button></span>
+        <pre id="cli-${i}">${esc(cmd)}</pre>
+      </div>`).join('')}`;
+  document.querySelectorAll('#drawer-body [data-copy]').forEach(a => a.onclick = async () => {
+    const text = document.getElementById(`cli-${a.dataset.copy}`).textContent;
+    try { await navigator.clipboard.writeText(text); a.textContent = 'copied'; }
+    catch { a.textContent = 'select and copy'; }
+    setTimeout(() => { a.textContent = 'copy'; }, 1600);
+  });
+}
+
+// ------------------------------------------------------------------ drawer
+let drawerView = null;
+let lastFocus = null;
+
+const FOCUSABLE = 'a[href],button:not([disabled]),input,select,textarea,[tabindex]:not([tabindex="-1"])';
+
+function openDrawer(view) {
+  drawerView = view;
+  lastFocus = document.activeElement;
+  document.getElementById('drawer-title').textContent =
+    view === 'queue' ? 'Review queue' : 'Get the CLI';
+  const drawer = document.getElementById('drawer');
+  drawer.hidden = false;
+  document.getElementById('scrim').hidden = false;
+  // Without this the page behind keeps scrolling under the panel.
+  document.body.style.overflow = 'hidden';
+  if (view === 'queue') renderQueueDrawer(); else cliDrawer();
+  // Move focus in, or a keyboard user opens a dialog and stays on the page
+  // behind it with no way to know anything happened.
+  (drawer.querySelector(FOCUSABLE) || drawer).focus();
+}
+
+function closeDrawer() {
+  if (drawerView === null) return;
+  drawerView = null;
+  queueMessage = null;
+  document.getElementById('drawer').hidden = true;
+  document.getElementById('scrim').hidden = true;
+  document.body.style.overflow = '';
+  // Return focus where it came from, so the tab order is not lost.
+  if (lastFocus && document.contains(lastFocus)) lastFocus.focus();
+  lastFocus = null;
+}
+
+// Keep Tab inside the open dialog.
+function trapFocus(e) {
+  if (drawerView === null || e.key !== 'Tab') return;
+  const drawer = document.getElementById('drawer');
+  const items = [...drawer.querySelectorAll(FOCUSABLE)].filter(el => el.offsetParent !== null);
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+
+// ------------------------------------------------------------------ session
+
+// showSignIn replaces the page with a sign-in prompt.
+//
+// Deliberately not a redirect: an automatic bounce to the identity provider on
+// every expired session makes it impossible to tell "your session ended" from
+// "this console is misconfigured", and lands people back at an IdP with no
+// explanation of who sent them.
+function showSignIn() {
+  document.querySelectorAll('.wrap > section').forEach(el => { el.hidden = true; });
+  let panel = document.getElementById('signin');
+  if (!panel) {
+    panel = document.createElement('section');
+    panel.id = 'signin';
+    panel.innerHTML = `
+      <span class="sec-label">Sign in</span>
+      <h1>This console requires an account.</h1>
+      <p class="note">Assay shows exploitable detail — the file a malicious pickle lives in,
+        the credential that leaked, the exact rule a model failed. What you see depends on
+        the role your identity provider groups map to, so there is no anonymous view.</p>
+      <div class="factions">
+        <a class="rbtn primary go" href="/auth/login"><b>Sign in</b></a>
+      </div>`;
+    document.querySelector('.wrap').prepend(panel);
+  }
+  panel.hidden = false;
+  document.getElementById('err').innerHTML = '';
+}
+
+// applyIdentity reflects the signed-in subject in the header and hides
+// controls the role cannot use.
+//
+// Hiding is a courtesy so people are not offered buttons that will fail. It is
+// not the control: the server refuses the action regardless, and every list it
+// returns was already filtered to the subject's scope.
+function applyIdentity(who) {
+  me = who;
+  if (who.namespace) NS = who.namespace;
+  const bar = document.getElementById('whoami');
+  if (bar) {
+    const roles = (who.roles || []).join(', ') || 'no role';
+    const scope = who.allTenants
+      ? 'all namespaces'
+      : `${(who.tenants || []).length} namespace(s)`;
+    bar.innerHTML = `<span class="mono">${esc(who.username)}</span>
+      <span class="trig ${esc(cls(who.roles && who.roles[0]))}">${esc(roles)}</span>
+      <span class="note" style="margin:0">${esc(scope)}</span>
+      <button class="lnk" id="signout">sign out</button>`;
+    document.getElementById('signout').onclick = async () => {
+      await fetch('/auth/logout', { method: 'POST' });
+      showSignIn();
+    };
+  }
+
+  // A role that cannot start scans should not be shown a scan form that 403s.
+  toggle('scanform', can('scan:create'));
+  toggle('runbar', can('scan:create'));
+  toggle('src-toggle', can('admin:manage'));
+  document.querySelectorAll('[data-needs-manage]').forEach(el => {
+    el.hidden = !can('admin:manage');
+  });
+}
+
+function toggle(id, show) {
+  const el = document.getElementById(id);
+  if (el) el.hidden = !show;
+}
+
+// renderRedaction says when the view is incomplete.
+//
+// A console that silently drops findings a role may not see is indistinguishable
+// from one reporting a clean model. Saying "3 findings hidden by your role" is
+// the difference between a filtered view and a false one.
+function renderRedaction(red) {
+  const el = document.getElementById('redaction');
+  if (!el) return;
+  if (!red || (!red.hiddenModels && !red.hiddenFindings && !red.detailWithheld)) {
+    el.innerHTML = '';
+    return;
+  }
+  const parts = [];
+  if (red.hiddenModels) parts.push(`${red.hiddenModels} model(s) outside your namespaces`);
+  if (red.hiddenFindings) parts.push(`${red.hiddenFindings} finding(s) your role cannot see`);
+  if (red.detailWithheld) parts.push('finding locations and descriptions withheld');
+  el.innerHTML = `<div class="msg">This view is narrowed by your role:
+    ${esc(parts.join('; '))}. Nothing here is missing by accident.</div>`;
+}
+
+// loadFindings fetches findings for the selected model only.
+//
+// There is no bulk endpoint on purpose: findings are redacted per subject, so
+// a whole-cluster list would either leak or be meaninglessly filtered.
+async function loadFindings(sel) {
+  if (!sel || !can('view:findings')) return [];
+  try {
+    const res = await api(`/findings?model=${encodeURIComponent(sel.model)}` +
+      `&version=${encodeURIComponent(sel.version)}`);
+    renderRedaction(res.redaction);
+    // Group by scanner so the existing renderer sees report-shaped objects.
+    const byScanner = {};
+    for (const f of res.findings || []) {
+      (byScanner[f.scanner || 'unknown'] ||= []).push(f);
+    }
+    return Object.entries(byScanner).map(([scanner, findings]) => ({
+      metadata: { name: `${sel.model}-${scanner}` },
+      scanRef: '', scanner, findings,
+    }));
+  } catch (e) {
+    if (e instanceof NotSignedIn) throw e;
+    return [];
+  }
+}
+
+const asConnector = c => ({
+  metadata: { name: c.name, namespace: c.namespace },
+  spec: {
+    type: c.type, registryURL: c.registryUrl, policyRef: c.policyRef,
+    pollInterval: c.pollInterval, rescanInterval: c.rescanInterval,
+  },
+  status: {
+    phase: c.phase, message: c.message, lastSyncTime: c.lastSyncTime,
+    registeredModels: c.registeredModels, modelVersions: c.modelVersions,
+    scansCreated: c.scansCreated,
+  },
+});
+
+async function refresh() {
+  try {
+    const [models, complianceRes, scansRes, exceptionsRes, connectorsRes] = await Promise.all([
+      api('/models'), api('/compliance'), api('/scans'), api('/exceptions'), api('/connectors'),
+    ]);
+    const msr = (models.models || []).map(asReport);
+    const compliance = complianceRes.reports || [];
+    const scans = (scansRes.scans || []).map(asScan);
+    const exceptions = (exceptionsRes.exceptions || []).map(asException);
+    const connectors = (connectorsRes.connectors || []).map(asConnector);
+    // Findings are fetched per selected model rather than in bulk: the server
+    // redacts them per subject, so there is no whole-cluster finding list to
+    // hand out.
+    const scanReports = await loadFindings(selected);
+    renderRedaction(models.redaction);
+    document.getElementById('err').innerHTML = '';
+    renderSources(connectors);
+    renderActive(scans);
+    renderInventory(msr);
+    renderFindings(scanReports, scans, selected);
+    renderCompliance(compliance, selected);
+    queueState = { models: msr, exceptions, reports: scanReports, scans };
+    updateQueueBadge();
+    if (drawerView === 'queue') renderQueueDrawer();
+  } catch (e) {
+    if (e instanceof NotSignedIn) {
+      showSignIn();
+      return;
+    }
+    document.getElementById('err').innerHTML =
+      `<div class="err"><strong>Cannot reach the Assay API.</strong> ${esc(e.message)}</div>`;
+  }
+}
+
+// Policies are read from the cluster rather than hardcoded, so the dropdown
+// only ever offers something that exists.
+// ---------------------------------------------------------------- sources
+// A connector is the difference between "we scan models" and "we scan the
+// models people actually register". Everything below is about making the
+// *absence* of that visible: a source that quietly stopped answering produces
+// no findings, so silence has to be shown, not inferred.
+
+let sourceState = [];
+
+const SOURCE_TYPES = {
+  MLflow: {
+    hint: 'A tracking server. Assay reads the model registry and rewrites the artifact URI so the scan pod can fetch it.',
+    url: 'http://mlflow.mlflow.svc.cluster.local:5000',
+    short: 'MLflow',
+  },
+  KubeflowModelRegistry: {
+    hint: 'The registry behind OpenShift AI. Verdicts are written back as custom properties on the version.',
+    url: 'https://modelregistry-sample.rhoai-model-registries.svc.cluster.local:8080',
+    short: 'Kubeflow',
+  },
+};
+
+// A source can be Connected and useless. Anything older than a few poll
+// intervals is stale regardless of what the phase says, so say so on the row
+// rather than leaving the reader to compare a timestamp against an interval
+// they cannot see.
+function syncHealth(c) {
+  const last = c.status?.lastSyncTime;
+  if (!last) return { cls: 'unknown', text: 'never', why: 'no successful sync yet' };
+  const age = (Date.now() - new Date(last)) / 1000;
+  const poll = parseDuration(c.spec?.pollInterval) || 300;
+  if (age > Math.max(poll * 4, 900)) {
+    return { cls: 'error', text: ago(last), why: `no sync in ${fmtAge(age)} for a ${c.spec?.pollInterval || '5m'} poll` };
+  }
+  return { cls: 'ok', text: ago(last), why: '' };
+}
+
+function parseDuration(d) {
+  if (!d) return 0;
+  let total = 0;
+  for (const [, n, u] of String(d).matchAll(/(\d+(?:\.\d+)?)([hms])/g)) {
+    total += parseFloat(n) * ({ h: 3600, m: 60, s: 1 })[u];
+  }
+  return total;
+}
+
+const fmtAge = s => s >= 86400 ? `${Math.floor(s / 86400)}d` : s >= 3600 ? `${Math.floor(s / 3600)}h` : `${Math.max(1, Math.floor(s / 60))}m`;
+
+function renderSources(items) {
+  sourceState = items;
+  const tb = document.getElementById('sources');
+  const count = document.getElementById('src-count');
+
+  if (!items.length) {
+    tb.innerHTML = `<tr><td colspan="9" class="empty">No sources connected. Assay is scanning only
+      what is submitted to it by hand or blocked at admission — nothing is being checked at
+      registration time.</td></tr>`;
+    count.textContent = '';
+    return;
+  }
+
+  const bad = items.filter(c => (c.status?.phase || 'Pending') !== 'Connected' || syncHealth(c).cls === 'error').length;
+  count.textContent = bad
+    ? `${items.length} source${items.length === 1 ? '' : 's'}, ${bad} not syncing cleanly`
+    : `${items.length} source${items.length === 1 ? '' : 's'}, all syncing`;
+
+  tb.innerHTML = items.map(c => {
+    const st = c.status || {}, sp = c.spec || {};
+    const phase = st.phase || 'Pending';
+    const h = syncHealth(c);
+    const msg = h.why || (phase !== 'Connected' ? st.message : '');
+    const type = SOURCE_TYPES[sp.type || 'KubeflowModelRegistry']?.short || sp.type;
+    return `<tr>
+      <td><b>${esc(c.metadata.name)}</b>${msg ? `<div class="srcmsg">${esc(msg)}</div>` : ''}</td>
+      <td class="mono">${esc(type)}</td>
+      <td class="mono" style="max-width:26ch;overflow:hidden;text-overflow:ellipsis">${esc(sp.registryURL || '')}</td>
+      <td><span class="pill ${esc(phase.toLowerCase())}">${esc(phase)}</span></td>
+      <td class="mono">${st.registeredModels ?? 0}</td>
+      <td class="mono">${st.modelVersions ?? 0}</td>
+      <td class="mono">${st.scansCreated ?? 0}</td>
+      <td class="mono"${h.cls === 'error' ? ' style="color:var(--critical)"' : ''}>${esc(h.text)}</td>
+      <td><div class="srcact">
+        <button class="lnk" data-srcsync="${esc(c.metadata.name)}">sync now</button>
+        <button class="lnk" data-srcdel="${esc(c.metadata.name)}">remove</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+function srcSay(html, bad) {
+  document.getElementById('srcmsg').innerHTML = `<div class="msg${bad ? ' bad' : ''}">${html}</div>`;
+}
+
+// Poking an annotation is enough to wake the reconciler; there is no separate
+// "sync" verb, and inventing one would mean a second path to keep correct.
+async function syncSource(name) {
+  try {
+    await api(`/connectors/${encodeURIComponent(name)}/sync`, { method: 'POST' });
+    srcSay(`Asked <b>${esc(name)}</b> to re-sync. New versions appear in the inventory as they are scanned.`);
+    refresh();
+  } catch (e) { srcSay(`Could not trigger a sync: ${esc(e.message)}`, true); }
+}
+
+// Removing a source stops future scans. It does not retract the verdicts it
+// already produced, and saying so matters: an audit trail that disappears when
+// somebody tidies up a connector is not an audit trail.
+async function deleteSource(name) {
+  const c = sourceState.find(x => x.metadata.name === name);
+  const scans = c?.status?.scansCreated ?? 0;
+  const ok = confirm(
+    `Remove the source "${name}"?\n\n` +
+    `New versions published there stop being scanned. The ${scans} scan${scans === 1 ? '' : 's'} ` +
+    `it already opened, and their verdicts, stay on record.`);
+  if (!ok) return;
+  try {
+    await api(`/connectors/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    srcSay(`Removed <b>${esc(name)}</b>. Existing reports were left alone.`);
+    refresh();
+  } catch (e) { srcSay(`Could not remove the source: ${esc(e.message)}`, true); }
+}
+
+function srcTypeChanged() {
+  const t = document.getElementById('s-type').value;
+  const def = SOURCE_TYPES[t];
+  document.getElementById('s-typehint').textContent = def.hint;
+  const url = document.getElementById('s-url');
+  url.placeholder = def.url;
+  document.getElementById('s-insecure').closest('.fld').hidden = false;
+}
+
+function srcSecretCmdChanged() {
+  const n = document.getElementById('s-secret').value.trim() || '<secret-name>';
+  const k = document.getElementById('s-secretkey').value.trim() || 'token';
+  document.getElementById('s-secretcmd').textContent =
+    `kubectl create secret generic ${n} --from-literal=${k}='…' -n ${NS}`;
+}
+
+async function createSource(ev) {
+  ev.preventDefault();
+  const name = document.getElementById('s-name').value.trim();
+  const type = document.getElementById('s-type').value;
+  const url = document.getElementById('s-url').value.trim();
+  if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(name)) {
+    return srcSay('The name must be lowercase letters, digits and dashes — it becomes a Kubernetes object name.', true);
+  }
+  const connectorPayload = {
+    name, type, registryUrl: url,
+    pollInterval: document.getElementById('s-poll').value.trim(),
+    rescanInterval: document.getElementById('s-rescan').value.trim(),
+    policyRef: document.getElementById('s-policy').value,
+    includeModels: document.getElementById('s-include').value
+      .split(',').map(x => x.trim()).filter(Boolean),
+    // A secret name, never a token. The server has no field for one.
+    secretName: document.getElementById('s-secret').value.trim(),
+    secretKey: document.getElementById('s-secretkey').value.trim() || 'token',
+    insecureSkipTlsVerify: document.getElementById('s-insecure').checked,
+    writeBack: document.getElementById('s-writeback').checked,
+  };
+
+  const btn = document.getElementById('s-submit');
+  btn.disabled = true;
+  try {
+    await api('/connectors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(connectorPayload),
+    });
+    document.getElementById('srcform').hidden = true;
+    document.getElementById('s-name').value = '';
+    srcSay(`Connected <b>${esc(name)}</b>. Watch its state above — it reports
+            <span class="mono">Connected</span> with a model count, or the reason it could not.`);
+    refresh();
+  } catch (e) {
+    srcSay(`Could not create the source: ${esc(e.message)}`, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('sources').addEventListener('click', e => {
+  const b = e.target.closest('[data-srcsync],[data-srcdel]');
+  if (!b) return;
+  if (b.dataset.srcsync) syncSource(b.dataset.srcsync);
+  else deleteSource(b.dataset.srcdel);
+});
+document.getElementById('src-toggle').addEventListener('click', () => {
+  const f = document.getElementById('srcform');
+  f.hidden = !f.hidden;
+  if (!f.hidden) { srcTypeChanged(); srcSecretCmdChanged(); document.getElementById('s-name').focus(); }
+});
+document.getElementById('s-cancel').addEventListener('click', () => { document.getElementById('srcform').hidden = true; });
+document.getElementById('s-type').addEventListener('change', srcTypeChanged);
+document.getElementById('s-secret').addEventListener('input', srcSecretCmdChanged);
+document.getElementById('s-secretkey').addEventListener('input', srcSecretCmdChanged);
+document.getElementById('srcform').addEventListener('submit', createSource);
+try { srcSecretCmdChanged(); } catch { /* cosmetic; must never stop boot() */ }
+
+async function loadPolicies() {
+  try {
+    const res = await api('/policies');
+    policyNames = res.policies || [];
+    for (const id of ['f-policy', 's-policy']) {
+      const sel = document.getElementById(id);
+      const keep = sel.value;
+      sel.innerHTML = '<option value="">cluster default</option>'
+        + policyNames.map(n => `<option${n === keep ? ' selected' : ''}>${esc(n)}</option>`).join('');
+    }
+  } catch { /* the error banner from refresh() already covers this */ }
+}
+
+document.getElementById('scanform').onsubmit = ev => {
+  ev.preventDefault();
+  const v = formValues();
+  if (!v.model || !v.uri) { say('A model name and an artifact URI are required.', true); return; }
+  runScan(v, document.getElementById('f-submit'));
+};
+['f-model', 'f-version', 'f-uri', 'f-format', 'f-policy'].forEach(id =>
+  document.getElementById(id).addEventListener('input', updatePreview));
+
+renderRunbar();
+renderScannerChoices();
+document.getElementById('open-queue').onclick = () => openDrawer('queue');
+document.getElementById('open-cli').onclick = () => openDrawer('cli');
+document.getElementById('drawer-close').onclick = closeDrawer;
+document.getElementById('scrim').onclick = closeDrawer;
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+document.addEventListener('keydown', trapFocus);
+document.getElementById('report-issue').href =
+  'mailto:DAVANO@davano.net?subject=' + encodeURIComponent('Assay — issue report') +
+  '&body=' + encodeURIComponent(
+    'What happened:\n\nWhat you expected:\n\nAssay version / image tag:\n\nCluster (OpenShift, kind, Rancher, other):\n');
+// The preset wants to preselect a policy, so wait for the options to exist.
+async function boot() {
+  try {
+    applyIdentity(await api('/whoami'));
+  } catch (e) {
+    if (e instanceof NotSignedIn) {
+      showSignIn();
+      return;
+    }
+    document.getElementById('err').innerHTML =
+      `<div class="err"><strong>Cannot reach the Assay API.</strong> ${esc(e.message)}</div>`;
+    return;
+  }
+  await loadPolicies().catch(() => {});
+  fillForm(PRESETS[0]);
+  refresh();
+  // Polling only starts once somebody is signed in, so an expired session does
+  // not sit in the background retrying every two seconds.
+  setInterval(refresh, 2000);
+}
+boot();
+refresh();
+// 2s so a scan visibly moves through its phases while someone is watching.
+</script>
+</body>
+</html>

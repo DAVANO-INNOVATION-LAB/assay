@@ -4,22 +4,39 @@ A single self-contained page. It talks to the cluster API, so what it shows is
 whatever the CRDs currently say — there is no separate database to fall out of
 step.
 
-> **How it is served matters.** Today the console is served by
-> `kubectl proxy --www`, which means every request carries the privileges of
-> whoever ran that command, frequently cluster-admin, and anyone who reaches
-> the port has them too. That is fine for a single operator on a laptop and not
-> fine for a shared cluster. `internal/api` exists for the shared case — OIDC
-> login, roles, tenant scoping and finding-level redaction — and wiring the
-> console to it is the next piece of work.
+**How it is served.** `assay-api` authenticates every request and returns only
+what the signed-in subject may see. Findings a role may not have are removed
+before the response is serialized — not hidden with CSS — so anything the page
+can display, it was already allowed to have.
+
+It refuses to start without an OIDC issuer and a role-bindings file. Both
+refusals are deliberate: a console that serves exploit paths to whoever reaches
+the port is worse than no console, and a permissive default for bindings would
+hand every finding to every authenticated user.
 
 ```bash
-cd <repo>
-kubectl proxy --port=8903 --www=./ui --www-prefix=/ui/
-# http://localhost:8903/ui/
+assay-api \
+  --oidc-issuer-url https://sso.example.com \
+  --oidc-client-id assay \
+  --oidc-redirect-url https://assay.example/auth/callback \
+  --bindings /config/bindings.yaml \
+  --tls-cert-file /tls/tls.crt --tls-private-key-file /tls/tls.key
 ```
 
-The console reads namespace `assay-system`. Installing elsewhere means editing
-`const NS` at the top of `ui/index.html`.
+## Who sees what
+
+| Role | Sees |
+|---|---|
+| `viewer` | A model exists and what it was judged to be. Nothing about why. |
+| `auditor` | Findings and compliance, but never the exploit path — no file locations, no descriptions. Enough to audit, not enough to attack. |
+| `owner` | Full finding detail and can start scans, for their own namespaces. |
+| `security` | The same everywhere, plus accepting risk. |
+| `admin` | Everything, including model sources and policy. |
+
+Groups from the identity provider map to roles and tenants in a bindings file.
+When a view is narrowed by your role the console says so — "3 findings your
+role cannot see" — because a console that silently drops findings is
+indistinguishable from one reporting a clean model.
 
 ## Starting a scan
 

@@ -1,5 +1,5 @@
-# Assay ships one image containing three binaries: the operator manager, the
-# in-pod scan runner, and the standalone CLI. Scan Jobs mount the same image
+# Assay ships one image containing four binaries: the operator manager, the
+# in-pod scan runner, the console API server, and the standalone CLI. Scan Jobs mount the same image
 # for their fetch and publish steps, so there is a single artifact to mirror
 # into an air-gapped registry, and `docker run --entrypoint /assay` gives the
 # same scanner to anyone without a cluster.
@@ -24,7 +24,8 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
       go build -a -ldflags="-s -w" -o assay-runner ./cmd/runner && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-      go build -a -ldflags="-s -w -X main.version=${VERSION}" -o assay ./cmd/assay
+      go build -a -ldflags="-s -w -X main.version=${VERSION}" -o assay ./cmd/assay && \
+      go build -a -ldflags="-s -w" -o assay-api ./cmd/api
 
 FROM registry.access.redhat.com/ubi9/ubi-micro:latest
 
@@ -39,6 +40,7 @@ COPY --from=builder /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem /etc/ssl/c
 
 COPY --from=builder /workspace/assay-manager /assay-manager
 COPY --from=builder /workspace/assay-runner /assay-runner
+COPY --from=builder /workspace/assay-api /assay-api
 COPY --from=builder /workspace/assay /assay
 
 # 65532 is the conventional nonroot UID. OpenShift assigns its own UID from

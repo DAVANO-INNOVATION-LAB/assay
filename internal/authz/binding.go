@@ -1,9 +1,12 @@
 package authz
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strings"
+
+	"sigs.k8s.io/yaml"
 )
 
 // Binding grants a role over a set of tenants to whoever matches Group.
@@ -160,4 +163,34 @@ func (s Subject) Describe() string {
 		detail = "findings without location or description"
 	}
 	return fmt.Sprintf("%s: %s over %s (%s)", s.Username, strings.Join(roles, "+"), scope, detail)
+}
+
+// ParseBindings reads role bindings from YAML or JSON.
+//
+// YAML because this file is written and reviewed by people, and a config that
+// cannot carry a comment cannot explain why a group was granted a role. JSON is
+// accepted too since YAML is a superset. Either a bare list or an object with a
+// "bindings" key works: both shapes get written by hand, and rejecting one over
+// a stylistic difference helps nobody.
+func ParseBindings(raw []byte) (Bindings, error) {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, fmt.Errorf("the bindings file is empty; nobody would be able to sign in")
+	}
+
+	var wrapper struct {
+		Bindings Bindings `json:"bindings"`
+	}
+	if err := yaml.Unmarshal(raw, &wrapper); err == nil && len(wrapper.Bindings) > 0 {
+		return wrapper.Bindings, nil
+	}
+
+	var list Bindings
+	if err := yaml.Unmarshal(raw, &list); err != nil {
+		return nil, fmt.Errorf("expected a list of bindings, or an object with a "+
+			"\"bindings\" key: %w", err)
+	}
+	if len(list) == 0 {
+		return nil, fmt.Errorf("no bindings found; nobody would be able to sign in")
+	}
+	return list, nil
 }
