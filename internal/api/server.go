@@ -93,6 +93,15 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/findings", s.authenticated(s.handleFindings))
 	mux.Handle("POST /api/scans", s.authenticated(s.handleCreateScan))
 	mux.Handle("POST /api/exceptions", s.authenticated(s.handleCreateException))
+	mux.Handle("GET /api/scans", s.authenticated(s.handleScans))
+	mux.Handle("GET /api/exceptions", s.authenticated(s.handleExceptions))
+	mux.Handle("GET /api/connectors", s.authenticated(s.handleConnectors))
+	mux.Handle("POST /api/connectors", s.authenticated(s.handleCreateConnector))
+	mux.Handle("DELETE /api/connectors/{name}", s.authenticated(s.handleDeleteConnector))
+	mux.Handle("POST /api/connectors/{name}/sync", s.authenticated(s.handleSyncConnector))
+	mux.Handle("GET /api/policies", s.authenticated(s.handlePolicies))
+	mux.Handle("GET /api/scanners", s.authenticated(s.handleScanners))
+	mux.Handle("GET /api/compliance", s.authenticated(s.handleCompliance))
 
 	mux.HandleFunc("GET /", s.handleConsole)
 	return securityHeaders(mux)
@@ -172,6 +181,10 @@ func (s *Server) handleWhoami(w http.ResponseWriter, r *http.Request, sub authz.
 		roles = append(roles, string(r))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
+		// The namespace the pipeline writes into. The console needs it to show
+		// an accurate `kubectl create secret` command; guessing it would print
+		// instructions that quietly fail on a non-default install.
+		"namespace":    s.cfg.Namespace,
 		"username":     sub.Username,
 		"roles":        roles,
 		"tenants":      sub.Scope.Namespaces,

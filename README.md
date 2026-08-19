@@ -94,13 +94,24 @@ screenshots.
 
 ![Assay console](docs/images/console-scan.png)
 
+It is served by `assay-api`, which authenticates every request against your
+identity provider and returns only what the signed-in subject may see. There is
+no anonymous mode: the console shows exploitable detail — the file a malicious
+pickle lives in, the credential that leaked — so it refuses to start without an
+OIDC issuer and a role-bindings file.
+
 ```bash
-kubectl proxy --port=8903 --www=./ui --www-prefix=/ui/   # http://localhost:8903/ui/
+assay-api \
+  --oidc-issuer-url https://sso.example.com \
+  --oidc-client-id assay --oidc-redirect-url https://assay.example/auth/callback \
+  --bindings /config/bindings.yaml \
+  --tls-cert-file /tls/tls.crt --tls-private-key-file /tls/tls.key
 ```
 
-Note how it is served: `kubectl proxy` carries the privileges of whoever ran
-it. `internal/api` provides OIDC login, roles and finding-level redaction for
-shared clusters; wiring the console to it is in progress.
+Five roles decide what a login can see, from `viewer` (a model exists and what
+it was judged to be, nothing about why) to `admin`. `auditor` is the
+interesting one: findings and compliance, but never the exploit path — enough
+to audit, not enough to attack. See [config/samples/bindings.yaml](config/samples/bindings.yaml).
 
 ## Scanner images
 

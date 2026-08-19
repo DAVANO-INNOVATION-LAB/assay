@@ -1,0 +1,43 @@
+# Maps identity-provider groups to Assay roles and the tenants they cover.
+#
+# There is no default. A missing bindings file is a startup error rather than a
+# permissive fallback: the failure mode of guessing here is a console that shows
+# every finding to every authenticated user, which is exactly what the roles
+# exist to prevent.
+#
+# Roles, narrowest first:
+#   viewer    a model exists and what it was judged to be. Nothing about why.
+#   auditor   findings and compliance, but never the exploit path — no file
+#             locations, no descriptions. Enough to audit, not enough to attack.
+#   owner     full finding detail and can start scans, for their own namespaces.
+#   security  the same everywhere, plus accepting risk.
+#   admin     everything, including model sources and policy.
+#
+# A single trailing "*" wildcards a group prefix. It is not permitted anywhere
+# else: a mid-string wildcard is very easy to write more broadly than intended.
+bindings:
+  - group: assay-admins
+    role: admin
+    allNamespaces: true
+
+  - group: security-engineering
+    role: security
+    allNamespaces: true
+
+  - group: internal-audit
+    role: auditor
+    allNamespaces: true
+
+  # Each ML team owns its own namespace and nothing else.
+  - group: ml-team-fraud
+    role: owner
+    namespaces: [team-fraud]
+
+  - group: ml-team-vision
+    role: owner
+    namespaces: [team-vision]
+
+  # Everyone in engineering can see that a model exists and its verdict.
+  - group: engineering-*
+    role: viewer
+    allNamespaces: true
