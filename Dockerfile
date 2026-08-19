@@ -4,7 +4,11 @@
 # into an air-gapped registry, and `docker run --entrypoint /assay` gives the
 # same scanner to anyone without a cluster.
 # Must be at least the go directive in go.mod, which oras-go pins to 1.25.
-FROM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
+# Pinned to the BUILD platform, not the target. The binaries are pure Go with
+# CGO disabled, so GOARCH cross-compiles them natively — emulating this stage
+# under QEMU to produce an arm64 binary compiles perhaps twenty times slower
+# for an identical result. Only the tiny runtime stage below is arch-specific.
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.25 AS builder
 
 WORKDIR /workspace
 
