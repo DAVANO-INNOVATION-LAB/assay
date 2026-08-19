@@ -472,3 +472,108 @@ func TestUnscannedAdmissionsAreCountedSeparately(t *testing.T) {
 		t.Errorf("an unscanned admission was counted as an approval (%v)", got)
 	}
 }
+
+// servingDeployment builds a Deployment with no Assay annotations at all —
+// the shape that used to be admitted with "nothing for assay to validate".
+func servingDeployment(t *testing.T, spec map[string]any) admission.Request {
+	t.Helper()
+	obj := map[string]any{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"metadata": map[string]any{
+			"name":      "serving",
+			"namespace": testNamespace,
+		},
+		"spec": map[string]any{"template": map[string]any{"spec": spec}},
+	}
+	raw, err := json.Marshal(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return admission.Request{AdmissionRequest: admissionv1.AdmissionRequest{
+		Operation: admissionv1.Create,
+		Namespace: testNamespace,
+		Object:    runtime.RawExtension{Raw: raw},
+	}}
+}
+
+// The regression this feature exists to prevent. "No model reference; nothing
+// for assay to validate" was a claim, and for this workload it was false.
+func TestUnannotatedServingWorkloadIsNotSilentlyAdmitted(t *testing.T) {
+	gate := newGate(t)
+	resp := gate.Handle(context.Background(), servingDeployment(t, map[string]any{
+		"containers": []any{map[string]any{
+			"name":         "server",
+			"image":        "vllm/vllm-openai:v0.7.0",
+			"volumeMounts": []any{map[string]any{"name": "w", "mountPath": "/models/llama3"}},
+		}},
+		"volumes": []any{map[string]any{
+			"name":                  "w",
+			"persistentVolumeClaim": map[string]any{"claimName": "model-store"},
+		}},
+	}))
+
+	if !resp.Allowed {
+		t.Fatal("without RequireReport this must still admit; the point is that it says so")
+	}
+	if len(resp.Warnings) == 0 {
+		t.Fatal("a workload that plainly serves a model and cannot be identified must warn, " +
+			"or the operator reads silence as a pass")
+	}
+	if !strings.Contains(strings.Join(resp.Warnings, " "), "no scan verdict was applied") {
+		t.Errorf("the warning must say no verdict was applied, got %v", resp.Warnings)
+	}
+}
+
+// With RequireReport the cluster has asked for every model to be scanned. A
+// workload that serves one it will not name cannot satisfy that.
+func TestUnidentifiedModelIsDeniedWhenReportsAreRequired(t *testing.T) {
+	gate := newGate(t)
+	gate.RequireReport = true
+	resp := gate.Handle(context.Background(), servingDeployment(t, map[string]any{
+		"containers": []any{map[string]any{
+			"name":  "server",
+			"image": "ghcr.io/huggingface/text-generation-inference:3.0",
+			"args":  []any{"--model-id", "/models/llama3"},
+		}},
+	}))
+
+	if resp.Allowed {
+		t.Fatal("RequireReport must not be satisfied by a workload that declines to name its model")
+	}
+	if !strings.Contains(resp.Result.Message, AnnotationModel) {
+		t.Errorf("the denial should say how to fix it, got %q", resp.Result.Message)
+	}
+}
+
+// A discovered storage URI resolves to the same report a declared one would,
+// so an unannotated workload gets the real verdict rather than a warning.
+func TestDiscoveredStorageURIGetsTheRealVerdict(t *testing.T) {
+	gate := newGate(t, report("fraud", "v3", func(r *securityv1alpha1.ModelSecurityReport) {
+		r.Status.Verdict = securityv1alpha1.VerdictQuarantined
+	}))
+	resp := gate.Handle(context.Background(), servingDeployment(t, map[string]any{
+		"containers": []any{map[string]any{
+			"name":  "server",
+			"image": "quay.io/example/serve:1",
+			"env":   []any{map[string]any{"name": "STORAGE_URI", "value": "s3://bucket/fraud/v3"}},
+		}},
+	}))
+
+	if resp.Allowed {
+		t.Fatalf("a quarantined model discovered from the environment must still be denied; got %q",
+			resp.Result.Message)
+	}
+}
+
+// The skip annotation still wins, and an ordinary workload is still admitted
+// without noise.
+func TestNonServingWorkloadStaysQuiet(t *testing.T) {
+	gate := newGate(t)
+	resp := gate.Handle(context.Background(), servingDeployment(t, map[string]any{
+		"containers": []any{map[string]any{"name": "web", "image": "nginx:1.27"}},
+	}))
+	if !resp.Allowed || len(resp.Warnings) != 0 {
+		t.Fatalf("an ordinary Deployment must be admitted silently; warnings %v", resp.Warnings)
+	}
+}

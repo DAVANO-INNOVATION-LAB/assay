@@ -91,7 +91,7 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | AI bill of materials | `internal/aibom` | Working: CycloneDX 1.6 ML-BOM and SPDX 3.0.1 rendered in-process from the model's own headers, plus declared-vs-measured drift |
 | Result parsers | `internal/results` | Validated against real scanner output |
 | Policy engine | `internal/policy` | Working: rules, exceptions, risk scoring |
-| Admission gate | `internal/webhook` | Working: KServe, Deployments, Pods |
+| Admission gate | `internal/webhook` | Working: KServe natively; Deployments, StatefulSets, DaemonSets, Jobs, CronJobs and Pods are inspected for serving intent even when unannotated |
 | Scanner images | `scanners/` | Built: ClamAV, Trivy, Syft, TruffleHog, Grype |
 | AI RMF assessment | `internal/compliance` | Working: 72 controls, evidence-or-attestation |
 | Cosign verification | `cmd/runner` | **Stub, and enabled by default** — emits one Medium "no verified signature" finding on every scan, so a clean model scores 10 rather than 0. Disable the `provenance` scanner in your policy if that floor is confusing |
