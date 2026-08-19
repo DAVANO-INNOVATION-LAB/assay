@@ -521,6 +521,17 @@ kubebuilder markers; `make generate` regenerates DeepCopy methods.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for what a good change looks like here —
 in particular the fail-closed rule, which is the one that matters most.
 
+## Compliance
+
+NDAA FY2026 §1513 folds an AI security framework into DFARS as a CMMC
+extension, which turns model provenance and AI bills of materials into
+contractual requirements for the Defense Industrial Base. Assay maps to
+**NIST SP 800-53 Rev 5**, **NIST AI RMF 1.0** and **MITRE ATLAS**, and emits an
+evidence bundle an authorizing official can verify offline.
+
+It produces evidence, not compliance — a distinction [docs/compliance.md](docs/compliance.md)
+takes seriously, including the controls it cannot speak to.
+
 ## Security
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md). Anything that makes
