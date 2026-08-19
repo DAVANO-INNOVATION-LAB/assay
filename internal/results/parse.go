@@ -49,66 +49,9 @@ func Parse(format, path string) (*Parsed, error) {
 		return parseSPDX(data)
 	case scanners.FormatTrufflehog:
 		return parseTrufflehog(data)
-	case scanners.FormatDocket:
-		return parseDocket(data)
 	default:
 		return nil, fmt.Errorf("unknown scanner result format %q", format)
 	}
-}
-
-// docketFinding is one drift discrepancy from the docket tool.
-type docketFinding struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Severity string `json:"severity"`
-	Declared string `json:"declared"`
-	Measured string `json:"measured"`
-	Detail   string `json:"detail"`
-}
-
-// parseDocket converts drift findings into Assay findings.
-//
-// Docket reports where a model's declarations disagree with its binaries. None
-// of those findings prove malice — a stale config is far more common than a
-// forged one — so the severities carry over as reported rather than being
-// escalated. What they establish is that a claim in the bill of materials is
-// not supported by the artifact, which is a different thing from a threat.
-func parseDocket(data []byte) (*Parsed, error) {
-	// An empty or "null" body means no discrepancies, which is a result and
-	// not a failure to produce one.
-	trimmed := strings.TrimSpace(string(data))
-	if trimmed == "" || trimmed == "null" {
-		return &Parsed{}, nil
-	}
-
-	var findings []docketFinding
-	if err := json.Unmarshal(data, &findings); err != nil {
-		return nil, fmt.Errorf("parse docket output: %w", err)
-	}
-
-	out := &Parsed{}
-	for _, f := range findings {
-		description := f.Detail
-		if f.Declared != "" || f.Measured != "" {
-			description = fmt.Sprintf("%s (declared: %s; measured: %s)",
-				f.Detail, orNone(f.Declared), orNone(f.Measured))
-		}
-		out.Findings = append(out.Findings, securityv1alpha1.Finding{
-			ID:          f.ID,
-			Title:       f.Title,
-			Severity:    normalizeSeverity(f.Severity),
-			Category:    "sbom",
-			Description: description,
-		})
-	}
-	return out, nil
-}
-
-func orNone(s string) string {
-	if s == "" {
-		return "not stated"
-	}
-	return s
 }
 
 // assayReport is the native format Assay-authored scanners emit.

@@ -87,7 +87,6 @@ const (
 // Result formats the publisher understands.
 const (
 	FormatAssay      = "assay"
-	FormatDocket     = "docket"
 	FormatClamAV     = "clamav"
 	FormatTrivyJSON  = "trivy-json"
 	FormatGrypeJSON  = "grype-json"
@@ -186,16 +185,21 @@ var catalog = map[string]Definition{
 		ResultFormat:   FormatAssay,
 		DefaultEnabled: true,
 	},
-	"docket": {
-		Name:     "docket",
+	"tessera": {
+		Name:     "tessera",
 		Category: CategorySBOM,
-		Image:    "scanner-docket",
-		// Emits a CycloneDX ML-BOM and reports where the model's declarations
-		// disagree with its binaries. Distinct from syft, which inventories
-		// packages; this describes the model itself.
-		Args:         []string{"drift", PlaceholderWorkspace, "--json"},
-		OutputFile:   "docket.json",
-		ResultFormat: FormatDocket,
+		Image:    "scanner-tessera",
+		// Reads the model's own binaries and reports where its declarations
+		// disagree with them — a config claiming one architecture while the
+		// tensors implement another, a card advertising a precision the weights
+		// do not carry. Distinct from syft, which inventories packages; this
+		// describes the model itself.
+		//
+		// Its findings already carry Assay's shape, so they need no translation:
+		// see github.com/DAVANO-INNOVATION-LAB/tessera.
+		Args:         []string{"inspect", "--json", PlaceholderWorkspace},
+		OutputFile:   "tessera.json",
+		ResultFormat: FormatAssay,
 		// No image is published yet; see scanners/.
 		Unbuilt: true,
 	},
