@@ -112,9 +112,29 @@ yet is a run against a live OpenShift cluster with a real Model Registry.
 > because scan Jobs run with networking disabled and a scanner that phones home
 > fails on an air-gapped cluster.
 >
-> Built for **linux/amd64 and linux/arm64**. A Docker Hub mirror at
-> `docker.io/davanolab` is planned; the manifests point at ghcr because that is
-> what exists.
+> Built for **linux/amd64 and linux/arm64**, and **signed with cosign** in the
+> release workflow using keyless OIDC — there is no signing key to store,
+> rotate or leak, and the certificate names this repository and this workflow.
+> Verify before you run it:
+>
+> ```
+> cosign verify \
+>   --certificate-identity-regexp '^https://github.com/DAVANO-INNOVATION-LAB/assay/' \
+>   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+>   ghcr.io/davano-innovation-lab/assay-operator:0.2.0
+> ```
+>
+> The release job verifies its own signatures before finishing, because a
+> release that silently produced none looks identical to one that did until
+> somebody downstream tries to check. Signing is by digest, not by tag: a tag
+> is a mutable pointer, and signing one attests to whatever it referenced at
+> the time.
+>
+> A **Docker Hub mirror** at `docker.io/davanolab` is published by the same
+> job when `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` are set as repository
+> secrets. It copies the manifest rather than rebuilding, so both registries
+> serve identical digests and one signature covers both. Without those secrets
+> the step is skipped with a notice rather than failing the release.
 >
 > If a pull returns `401 Unauthorized`, the package is still private — GitHub
 > publishes container packages private by default regardless of the
