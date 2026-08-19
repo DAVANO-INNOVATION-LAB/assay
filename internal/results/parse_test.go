@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/scanners"
 )
 
@@ -267,34 +268,79 @@ func TestSeverityNormalization(t *testing.T) {
 	}
 }
 
-func TestParseDocketDriftFindings(t *testing.T) {
-	raw := []byte(`[
-	  {"id":"DOCKET-DRIFT-002","title":"Declared precision does not match the tensors",
-	   "severity":"High","declared":"bfloat16","measured":"F8_E4M3",
-	   "detail":"config.json declares bfloat16 while the tensors report F8_E4M3"}
-	]`)
-	got, err := parseDocket(raw)
+// Tessera emits a superset object — format, tensors, lineage and more — with a
+// findings array already in Assay's shape. parseAssay ignores the keys it does
+// not know, which is why Tessera needs no parser of its own.
+//
+// The fixture is real output from `tessera inspect --json`, not a hand-written
+// approximation, so a change to Tessera's shape fails here rather than silently
+// producing zero findings in a scan.
+func TestTesseraOutputParsesAsNativeAssay(t *testing.T) {
+	raw := []byte(`{
+ "format": "safetensors",
+ "tensorCount": 3,
+ "findings": [
+  {
+   "id": "TESS-DRIFT-005",
+   "title": "Declared architecture could not be checked",
+   "severity": "Low",
+   "category": "drift",
+   "location": "config.json",
+   "description": "config.json declares the architecture \"MistralForCausalLM\", but the model binary does not record one, so the claim is carried into the bill of materials unverified."
+  },
+  {
+   "id": "TESS-DRIFT-002",
+   "title": "Declared precision does not match the tensors",
+   "severity": "High",
+   "category": "drift",
+   "location": "config.json",
+   "description": "config.json declares \"bfloat16\" while the tensor headers report \"F8_E4M3\" holds the most parameters. Precision drives memory, throughput and accuracy, so a quantized model presented as full precision misrepresents all three."
+  },
+  {
+   "id": "TESS-LIC-001",
+   "title": "No license disclosed",
+   "severity": "Low",
+   "category": "license",
+   "location": "model.safetensors",
+   "description": "the model file discloses no license; the SBOM cannot populate the license element that CISA/G7 SBOM-for-AI minimum elements ask for. Supply it from a sidecar or the source repo."
+  }
+ ]
+}`)
+
+	got, err := parseAssay(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Findings) != 1 {
-		t.Fatalf("want 1 finding, got %d", len(got.Findings))
+	if len(got.Findings) != 3 {
+		t.Fatalf("want 3 findings from the fixture, got %d", len(got.Findings))
 	}
-	f := got.Findings[0]
-	if f.ID != "DOCKET-DRIFT-002" || f.Severity != "High" {
-		t.Fatalf("unexpected finding: %+v", f)
+
+	byID := map[string]securityv1alpha1.Finding{}
+	for _, f := range got.Findings {
+		byID[f.ID] = f
 	}
-	// Both sides of the comparison must survive into the description, or a
-	// reader cannot tell what disagreed with what.
-	if !strings.Contains(f.Description, "bfloat16") || !strings.Contains(f.Description, "F8_E4M3") {
-		t.Fatalf("the description should carry both values, got %q", f.Description)
+
+	drift, ok := byID["TESS-DRIFT-002"]
+	if !ok {
+		t.Fatalf("the precision-mismatch finding did not survive: %v", byID)
+	}
+	if drift.Severity != "High" {
+		t.Fatalf("a quantized model declared as full precision is High, got %q", drift.Severity)
+	}
+	// The description is what a responder reads; losing it would leave a bare ID.
+	if !strings.Contains(drift.Description, "F8_E4M3") {
+		t.Fatalf("the measured value should survive into the description, got %q", drift.Description)
+	}
+	if drift.Location == "" {
+		t.Error("a finding with no location cannot be acted on")
 	}
 }
 
-// No discrepancies is a result. It must not read as a scanner failure.
-func TestParseDocketEmptyIsClean(t *testing.T) {
-	for _, body := range []string{"", "null", "[]"} {
-		got, err := parseDocket([]byte(body))
+// A model Tessera finds nothing wrong with must read as clean, not as a
+// scanner that failed to run.
+func TestTesseraCleanOutputIsClean(t *testing.T) {
+	for _, body := range []string{`{"format":"safetensors","findings":[]}`, `{"format":"gguf"}`, ""} {
+		got, err := parseAssay([]byte(body))
 		if err != nil {
 			t.Fatalf("%q should parse cleanly: %v", body, err)
 		}
