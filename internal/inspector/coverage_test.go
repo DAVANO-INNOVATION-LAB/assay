@@ -122,8 +122,10 @@ func TestExecutesOnLoadClassification(t *testing.T) {
 		}
 	}
 	// ONNX resolves custom operator domains to native libraries, and a GGUF
-	// chat template is rendered by a Jinja engine (CVE-2024-34359). Neither is
-	// pickle-style deserialization, but an unreadable one is not a footnote.
+	// header carries a chat template that loaders render through a template
+	// engine (CVE-2024-34359 in llama-cpp-python; CVE-2026-18581 in llama.cpp's
+	// own parser). Neither is pickle-style deserialization, but an unreadable
+	// one is not a footnote.
 	for _, f := range []string{"a.onnx", "a.gguf"} {
 		if !executesOnLoad(f) {
 			t.Errorf("%s has a documented load-time code path and must not be treated "+
