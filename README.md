@@ -77,8 +77,9 @@ yet is a run against a live OpenShift cluster with a real Model Registry.
 > because scan Jobs run with networking disabled and a scanner that phones home
 > fails on an air-gapped cluster.
 >
-> Currently **linux/amd64 only**. A Docker Hub mirror at `docker.io/davanolab`
-> is planned; the manifests point at ghcr because that is what exists.
+> Built for **linux/amd64 and linux/arm64**. A Docker Hub mirror at
+> `docker.io/davanolab` is planned; the manifests point at ghcr because that is
+> what exists.
 
 The one image carries all four binaries — the operator, the in-pod scan runner,
 the console API server and the standalone CLI — so an air-gapped cluster mirrors
