@@ -1,14 +1,47 @@
 # Assay
 
-**A Davano Innovation Lab project.**
+[![CI](https://github.com/DAVANO-INNOVATION-LAB/assay/actions/workflows/ci.yml/badge.svg)](https://github.com/DAVANO-INNOVATION-LAB/assay/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/DAVANO-INNOVATION-LAB/assay.svg)](https://pkg.go.dev/github.com/DAVANO-INNOVATION-LAB/assay)
+[![Go Report Card](https://goreportcard.com/badge/github.com/DAVANO-INNOVATION-LAB/assay)](https://goreportcard.com/report/github.com/DAVANO-INNOVATION-LAB/assay)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-An OpenShift-native security platform for AI models. Assay integrates directly
-with the OpenShift AI Model Registry, scans every registered model version,
-and blocks unapproved models at deployment time — the way Advanced Cluster
-Security works for containers, but purpose-built for model artifacts.
+**A model with a backdoor in it looks exactly like a model without one.**
 
-The marketing and technical overview site lives in [`web/`](web/) and deploys
-to Netlify from [`netlify.toml`](netlify.toml).
+Assay is supply-chain security for AI models on Kubernetes and OpenShift. It
+scans every model version a registry publishes — for pickle code execution,
+embedded credentials, malware and CVEs — verifies who signed it, and refuses
+to let an unapproved one reach a running workload.
+
+```bash
+# No cluster needed. Streams only the headers it needs, not the whole model.
+docker run --rm ghcr.io/davano-innovation-lab/assay-operator:0.1.0 \
+  /assay inspect hf://openai-community/gpt2
+```
+
+```
+  [Low     ] ASSAY-PICKLE-003  Pickle-based weights execute code on load
+             at pytorch_model.bin
+             this is inherent to the format, not a defect in this model —
+             prefer safetensors, which cannot execute anything
+
+  coverage: 25 read in full, 1 header-only, 0 not read
+  verdict:  Approved (risk score 0/100)
+```
+
+Note what that says. gpt2's pickle weights *can* execute code, and Assay
+reports it — at Low, and still approves the model, because that is true of
+every pickle ever shipped and is not a defect in this one. A scanner that
+raises an alarm on the ordinary case is a scanner people switch off. It also
+reports that one file was read header-only, because *what was not examined* is
+part of a verdict.
+
+![The Assay console](docs/images/console-scan.png)
+
+Its limits are documented rather than implied. A model poisoned in its
+*weights* is byte-identical to a clean one, and no static scanner can see it —
+so Assay says so, in [SECURITY.md](SECURITY.md) and in the
+[MITRE ATLAS coverage map](internal/compliance/atlas.go), instead of letting
+silence imply coverage.
 
 ## Why the Model Registry is the integration point
 
