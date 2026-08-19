@@ -70,14 +70,22 @@ disabled. CI runs build, vet, lint, the race-enabled unit suite, a CLI
 end-to-end check, and the live MLflow scan on every push. What has not happened
 yet is a run against a live OpenShift cluster with a real Model Registry.
 
-> **No images are published yet.** `docker.io/davanolab` is empty, so every
-> `docker run`, `helm install` and `kubectl apply` below needs you to build and
-> push first — `make docker-build docker-push scanners scanners-push
-> REGISTRY=<your-namespace>`. Until then those commands fail with a pull error.
-> This is the first thing to fix before depending on any of it.
+> **Images.** The operator image is published to GitHub Container Registry:
+>
+> ```
+> ghcr.io/davano-innovation-lab/assay-operator:0.1.0
+> ```
+>
+> A Docker Hub mirror at `docker.io/davanolab/assay-operator` is planned; until
+> it lands, point `--scanner-registry` and the Helm `image.repository` at ghcr.
+> The individual scanner images (clamav, trivy, grype, syft, trufflehog) are not
+> published yet — build them with `make scanners scanners-push
+> REGISTRY=<your-namespace>`, or run the `inspector-only` policy, which uses
+> only the built-in scanner and therefore needs no extra images.
 
-The one image carries all three binaries, so once built the scanner is usable
-with no cluster at all:
+The one image carries all four binaries — the operator, the in-pod scan runner,
+the console API server and the standalone CLI — so an air-gapped cluster mirrors
+a single artifact, and the scanner is usable with no cluster at all:
 
 ```bash
 make docker-build REGISTRY=<your-namespace>

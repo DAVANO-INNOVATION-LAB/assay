@@ -31,5 +31,5 @@ labels:
 # One place to retag. The Deployment's ASSAY_OPERATOR_IMAGE env must match, and
 # it is patched in the overlays rather than here so the base stays literal.
 images:
-  - name: docker.io/davanolab/assay-operator
+  - name: ghcr.io/davano-innovation-lab/assay-operator
     newTag: 0.1.0
