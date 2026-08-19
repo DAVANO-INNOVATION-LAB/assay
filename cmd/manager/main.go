@@ -38,6 +38,7 @@ func init() {
 func main() {
 	var (
 		trustRootPath          string
+		auditNamespace         string
 		requireTransparencyLog bool
 		metricsAddr            string
 		probeAddr              string
@@ -81,6 +82,9 @@ func main() {
 	flag.IntVar(&scanDeadlineMinutes, "scan-deadline-minutes", 120,
 		"fail a scan that has not reached a verdict within this many minutes; "+
 			"without it a scan whose report never lands retries forever")
+	flag.StringVar(&auditNamespace, "audit-namespace", os.Getenv("POD_NAMESPACE"),
+		"namespace for the tamper-evident decision log; empty disables recording, "+
+			"which also leaves the AU-9 control mapping with nothing behind it")
 	flag.StringVar(&trustRootPath, "trust-root", os.Getenv("ASSAY_TRUST_ROOT"),
 		"path to a Sigstore trusted-root JSON file for signature verification; "+
 			"left empty, provenance reports that it cannot verify rather than fetching one over the network")
@@ -150,6 +154,7 @@ func main() {
 		JobConfig:              jobConfig,
 		ScanDeadline:           time.Duration(scanDeadlineMinutes) * time.Minute,
 		TrustRootPath:          trustRootPath,
+		AuditNamespace:         auditNamespace,
 		RequireTransparencyLog: requireTransparencyLog,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ArtifactScan")

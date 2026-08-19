@@ -87,6 +87,25 @@ rules:
 - apiGroups:
   - security.davano.io
   resources:
+  - auditcheckpoints
+  verbs:
+  - create
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - security.davano.io
+  resources:
+  - auditrecords
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+- apiGroups:
+  - security.davano.io
+  resources:
   - modelsecurityreports
   verbs:
   - create
