@@ -1,4 +1,4 @@
-REGISTRY ?= docker.io/davanolab
+REGISTRY ?= ghcr.io/davano-innovation-lab
 IMG ?= $(REGISTRY)/assay-operator:$(IMAGE_TAG)
 IMAGE_TAG ?= 0.1.0
 NAMESPACE ?= assay-system
