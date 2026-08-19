@@ -16,6 +16,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/audit"
 	"github.com/DAVANO-INNOVATION-LAB/assay/internal/controller"
 	assaymetrics "github.com/DAVANO-INNOVATION-LAB/assay/internal/metrics"
 	assaywebhook "github.com/DAVANO-INNOVATION-LAB/assay/internal/webhook"
@@ -192,7 +193,14 @@ func main() {
 		// Signs risk acceptances with the authenticated identity of whoever
 		// created them, so a waiver records who actually accepted it rather
 		// than whichever name they typed.
-		if err := (&assaywebhook.ExceptionSigner{}).SetupWithManager(mgr); err != nil {
+		// The signer records accepted risks itself: this webhook is the only
+		// place the authenticated identity of the approver exists, so a
+		// controller reading the stored object later can only see a claim.
+		signer := &assaywebhook.ExceptionSigner{}
+		if auditNamespace != "" {
+			signer.Recorder = &audit.Recorder{Client: mgr.GetClient(), Namespace: auditNamespace}
+		}
+		if err := signer.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to set up exception signer")
 			os.Exit(1)
 		}

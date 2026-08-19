@@ -13,7 +13,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
 	securityv1alpha1 "github.com/DAVANO-INNOVATION-LAB/assay/api/v1alpha1"
+	"github.com/DAVANO-INNOVATION-LAB/assay/internal/audit"
 )
 
 func exception(mutate func(*securityv1alpha1.ArtifactException)) securityv1alpha1.ArtifactException {
@@ -180,5 +184,59 @@ func TestDigestBindingIsPreserved(t *testing.T) {
 	got := applyPatches(t, ex, resp)
 	if got.Spec.ScannedDigest != ex.Spec.ScannedDigest {
 		t.Errorf("digest binding = %q, want it preserved through signing", got.Spec.ScannedDigest)
+	}
+}
+
+// The approver's identity exists only in the admission request. Recording the
+// acceptance here is what makes it attributable; a controller reading the
+// stored object later sees a field, not an authenticated fact.
+func TestAcceptedRiskIsRecordedWithTheAuthenticatedApprover(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := clientgoscheme.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	if err := securityv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).Build()
+	signer := &ExceptionSigner{Recorder: &audit.Recorder{Client: c, Namespace: "assay-system"}}
+
+	ex := securityv1alpha1.ArtifactException{
+		ObjectMeta: metav1.ObjectMeta{Name: "waiver", Namespace: "assay-system"},
+		Spec: securityv1alpha1.ArtifactExceptionSpec{
+			ModelName: "fraud", ModelVersion: "v3", Reason: "compensating control",
+			Rules: []string{"requireSignature"},
+			// Deliberately claiming to be someone else; the webhook overwrites it.
+			ApprovedBy: "not-me@example.com",
+		},
+	}
+	raw, _ := json.Marshal(ex)
+	resp := signer.Handle(context.Background(), admission.Request{
+		AdmissionRequest: admissionv1.AdmissionRequest{
+			Operation: admissionv1.Create,
+			Object:    runtime.RawExtension{Raw: raw},
+			UserInfo:  authenticationv1.UserInfo{Username: "alice@davano.net"},
+		},
+	})
+	if !resp.Allowed {
+		t.Fatalf("should have been signed and allowed: %+v", resp.Result)
+	}
+
+	records, _, err := (&audit.Recorder{Client: c, Namespace: "assay-system"}).Chain(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("the acceptance should have produced one audit record, got %d", len(records))
+	}
+	got := records[0]
+	if got.Type != audit.EventRiskAccepted {
+		t.Errorf("wrong event type: %s", got.Type)
+	}
+	if got.Actor != "alice@davano.net" {
+		t.Fatalf("the record must carry the authenticated approver, not the claimed one; got %q", got.Actor)
+	}
+	if got.Detail["reason"] != "compensating control" {
+		t.Errorf("the stated reason must survive, got %q", got.Detail["reason"])
 	}
 }
