@@ -826,8 +826,11 @@ func executesOnLoad(rel string) bool {
 
 	// Not deserialization, but both have documented load-time code paths, so
 	// an unreadable one cannot be waved through as a footnote either. ONNX
-	// resolves custom operator domains to native libraries; a GGUF chat
-	// template is rendered by a Jinja engine, which is CVE-2024-34359.
+	// resolves custom operator domains to native libraries. A GGUF header
+	// carries tokenizer.chat_template, which loaders render through a template
+	// engine — CVE-2024-34359 is that path reaching RCE in llama-cpp-python
+	// (not llama.cpp itself, which had no Jinja engine then), and llama.cpp
+	// has since taken its own template-parser CVE in CVE-2026-18581.
 	//
 	// safetensors stays absent from this list on purpose: it has no such path,
 	// which is the whole reason to prefer it.
