@@ -59,6 +59,15 @@ const (
 	// EventPolicyChanged records a change to the rules themselves, which
 	// silently reinterprets every verdict that follows.
 	EventPolicyChanged EventType = "PolicyChanged"
+	// EventModelPromoted records a human moving a model version into an
+	// environment. It is the decision the admission gate then enforces, so
+	// without it the chain shows what was blocked and never who decided a
+	// model should be there in the first place.
+	EventModelPromoted EventType = "ModelPromoted"
+	// EventPromotionRefused records a promotion a person declined, or one the
+	// model's own verdict forbade. The two are distinguished in the detail:
+	// a refusal nobody made is a policy outcome, not a judgement.
+	EventPromotionRefused EventType = "PromotionRefused"
 )
 
 // Record is one entry in the chain.

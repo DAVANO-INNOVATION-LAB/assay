@@ -162,6 +162,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := (&controller.PromotionReconciler{
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		AuditNamespace: auditNamespace,
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "Promotion")
+		os.Exit(1)
+	}
+
 	if err := (&controller.ComplianceReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -210,6 +219,13 @@ func main() {
 		}
 		if err := signer.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to set up exception signer")
+			os.Exit(1)
+		}
+		// Promotion requests are signed on the same principle: the identity
+		// that asked and the identity that decided both come from the
+		// authenticated request rather than from the payload.
+		if err := (&assaywebhook.PromotionSigner{}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to set up promotion signer")
 			os.Exit(1)
 		}
 	}

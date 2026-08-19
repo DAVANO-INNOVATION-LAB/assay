@@ -106,4 +106,67 @@ webhooks:
         operations: ["CREATE"]
         resources: ["pods"]
         scope: Namespaced
+---
+# The two signers. Both stamp an authenticated identity onto an object whose
+# every field the submitter controls, so a name in the payload is a claim and
+# the request is the only place the fact lives.
+#
+# failurePolicy is Fail here regardless of the gate's setting, and the
+# distinction is deliberate: if the deployment gate is down the safe default is
+# to keep the cluster running, but if a signer is down the safe default is that
+# no waiver and no promotion is recorded at all. An unattributable approval is
+# worse than a missing one.
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "assay.fullname" . }}-signers
+  labels:
+    {{- include "assay.labels" . | nindent 4 }}
+  annotations:
+    {{- if eq .Values.webhook.certMode "openshift" }}
+    service.beta.openshift.io/inject-cabundle: "true"
+    {{- else if eq .Values.webhook.certMode "cert-manager" }}
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "assay.fullname" . }}-webhook
+    {{- end }}
+webhooks:
+  - name: exceptions.security.davano.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+    clientConfig:
+      service:
+        name: {{ include "assay.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /sign-exception
+        port: 443
+      {{- if eq .Values.webhook.certMode "external" }}
+      caBundle: {{ .Values.webhook.caBundle }}
+      {{- end }}
+    rules:
+      - apiGroups: ["security.davano.io"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["artifactexceptions"]
+        scope: Namespaced
+  - name: promotions.security.davano.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: Fail
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+    clientConfig:
+      service:
+        name: {{ include "assay.webhookServiceName" . }}
+        namespace: {{ .Release.Namespace }}
+        path: /sign-promotion
+        port: 443
+      {{- if eq .Values.webhook.certMode "external" }}
+      caBundle: {{ .Values.webhook.caBundle }}
+      {{- end }}
+    rules:
+      - apiGroups: ["security.davano.io"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["promotionrequests"]
+        scope: Namespaced
 {{- end }}

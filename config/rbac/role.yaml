@@ -80,6 +80,7 @@ rules:
   - compliancereports/status
   - modelregistryconnectors/status
   - modelsecurityreports/status
+  - promotionrequests/status
   verbs:
   - get
   - patch
@@ -109,6 +110,16 @@ rules:
   - modelsecurityreports
   verbs:
   - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - security.davano.io
+  resources:
+  - promotionrequests
+  verbs:
   - get
   - list
   - patch

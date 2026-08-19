@@ -295,7 +295,7 @@ var nistAIRMF10 = []Control{
 		ID: "MAP 3.5", Function: FunctionMap, Category: "MAP 3",
 		Text:       "Processes for human oversight are defined, assessed, and documented in accordance with organizational policies from the govern function.",
 		Automation: AutomationPartial, Evidence: []EvidenceKind{EvidenceResidualRisk},
-		Rationale: "Exception approval and promotion are human-in-the-loop steps Assay records with an approver and an expiry. The wider oversight design is organizational.",
+		Rationale: "Exception approval and promotion are human-in-the-loop steps Assay records with an authenticated approver: a waiver carries an approver and an expiry, and a promotion into an environment requires a decision signed by the identity that made it and re-checks the security verdict at the moment it is acted on. The wider oversight design is organizational.",
 	},
 	{
 		ID: "MAP 4.1", Function: FunctionMap, Category: "MAP 4",

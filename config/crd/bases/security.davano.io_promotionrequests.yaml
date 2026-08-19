@@ -27,6 +27,12 @@ spec:
     - jsonPath: .status.phase
       name: Phase
       type: string
+    - jsonPath: .status.verdict
+      name: Verdict
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -50,9 +56,44 @@ spec:
           metadata:
             type: object
           spec:
-            description: PromotionRequestSpec asks to promote a model version to an
-              environment.
+            description: |-
+              PromotionRequestSpec asks to promote a model version to an environment.
+
+              Requestor, DecidedBy and DecidedAt are stamped by the admission webhook from
+              the authenticated request and whatever a submitter puts in them is discarded.
+              That is the same rule ArtifactException follows and for the same reason: a
+              name in a payload is a claim, and an approval nobody can attribute is not an
+              approval.
             properties:
+              decidedAt:
+                description: DecidedAt is stamped when Decision is first set.
+                format: date-time
+                type: string
+              decidedBy:
+                description: DecidedBy is stamped from the authenticated identity
+                  that set Decision.
+                type: string
+              decidedByGroups:
+                description: DecidedByGroups records the groups that identity belonged
+                  to.
+                items:
+                  type: string
+                type: array
+              decision:
+                description: |-
+                  Decision is the human step. Empty means nobody has decided yet, which is
+                  the state a promotion request exists to hold: the controller can say
+                  whether a promotion is *permissible*, and only a person can say whether
+                  it should happen.
+                enum:
+                - Approve
+                - Reject
+                type: string
+              decisionReason:
+                description: |-
+                  DecisionReason explains the decision. Required to reject, because an
+                  unexplained refusal is indistinguishable from an oversight later.
+                type: string
               justification:
                 type: string
               modelName:
@@ -60,6 +101,9 @@ spec:
               modelVersion:
                 type: string
               requestor:
+                description: |-
+                  Requestor is stamped from the authenticated identity that created the
+                  request.
                 type: string
               targetEnvironment:
                 enum:
@@ -77,16 +121,36 @@ spec:
             properties:
               message:
                 type: string
+              observedVerdictTime:
+                description: |-
+                  ObservedVerdictTime is when that verdict was issued. An approval signed
+                  against one verdict must not silently carry over to a later one.
+                format: date-time
+                type: string
               phase:
+                description: |-
+                  Phase is where the request has got to.
+
+                  Blocked is distinct from Rejected on purpose: one means a person said no,
+                  the other means the model's own security verdict forbids the promotion
+                  regardless of what anybody says. Collapsing them would make a policy
+                  refusal look like a human decision.
                 enum:
                 - Pending
                 - Approved
                 - Rejected
+                - Blocked
                 type: string
               reviewTime:
                 format: date-time
                 type: string
               reviewedBy:
+                type: string
+              verdict:
+                description: |-
+                  Verdict is the security verdict this request was last evaluated against,
+                  so a reviewer sees what they are approving rather than having to go and
+                  look it up.
                 type: string
             type: object
         type: object
