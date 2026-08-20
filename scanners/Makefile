@@ -6,7 +6,7 @@
 
 REGISTRY ?= ghcr.io/davano-innovation-lab
 # Must match scanners.ImageTag in internal/scanners/catalog.go.
-TAG ?= 0.2.2
+TAG ?= 0.2.3
 PLATFORM ?= linux/amd64
 CONTAINER_TOOL ?= docker
 

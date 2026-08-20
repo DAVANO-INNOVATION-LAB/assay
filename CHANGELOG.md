@@ -1,8 +1,17 @@
 # Changelog
 
-## v0.2.2
+## v0.2.3
 
-Maintenance.
+Re-issues v0.2.2, whose release job could not start. `sigstore/cosign-installer`
+publishes no floating `v4` tag — only `v2` and `v3` — so bumping it to `@v4`
+made the workflow unresolvable and neither image job ran. It is back on `@v3`,
+which is the version that signed v0.2.0, and staying there is the right answer
+regardless: "proven on the step that signs releases" beats "newer".
+
+**v0.2.2 published CLI binaries and no container images. Do not use that tag.**
+
+Everything below is what v0.2.2 was meant to carry.
+
 
 **Pinned scanner versions moved to current upstream releases.** The pins had
 drifted a long way — syft was 33 minor versions behind, grype 30, trufflehog 9,

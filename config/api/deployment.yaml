@@ -25,7 +25,7 @@ spec:
           # The same image as the operator. It carries four binaries and the
           # entrypoint selects one, so an air-gapped cluster mirrors a single
           # artifact rather than keeping two in step.
-          image: ghcr.io/davano-innovation-lab/assay-operator:0.2.2
+          image: ghcr.io/davano-innovation-lab/assay-operator:0.2.3
           command: ["/assay-api"]
           args:
             - --listen=:8443
