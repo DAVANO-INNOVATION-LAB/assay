@@ -53,7 +53,7 @@ spec:
                     app.kubernetes.io/component: controller
       containers:
         - name: manager
-          image: ghcr.io/davano-innovation-lab/assay-operator:0.2.3
+          image: ghcr.io/davano-innovation-lab/assay-operator:0.2.4
           imagePullPolicy: IfNotPresent
           lifecycle:
             preStop:
@@ -76,7 +76,7 @@ spec:
             # The scan Jobs run this same image for their fetch and publish
             # steps, so the manager must know its own image reference.
             - name: ASSAY_OPERATOR_IMAGE
-              value: ghcr.io/davano-innovation-lab/assay-operator:0.2.3
+              value: ghcr.io/davano-innovation-lab/assay-operator:0.2.4
             # Scans and their reports live here, while the workloads the gate
             # validates live in the teams' own namespaces. The gate needs to
             # know where to look or it finds nothing and admits everything.

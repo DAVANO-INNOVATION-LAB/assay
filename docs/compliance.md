@@ -35,7 +35,7 @@ Assay works the model layer.
 |---|---|
 | **NIST SP 800-53 Rev 5** — the controls an artifact scanner speaks to | [`internal/compliance/nist80053.go`](../internal/compliance/nist80053.go) |
 | **NIST AI RMF 1.0** — all 72 subcategories, most marked unobservable | [`internal/compliance/catalog.go`](../internal/compliance/catalog.go) |
-| **MITRE ATLAS** (release 2026.07) — techniques detected, partly covered, and out of scope | [`internal/compliance/atlas.go`](../internal/compliance/atlas.go) |
+| **MITRE ATLAS** (release 2026.07) — technique mapping with the evidence behind each | [`internal/compliance/atlas.go`](../internal/compliance/atlas.go) |
 
 **CNSSI 1253** shares 800-53's control identifiers, so the mapping carries
 across. What it adds is the National Security Systems categorization and
@@ -106,12 +106,11 @@ Four properties are deliberate:
    needed.
 2. **Tamper-evident.** Editing any field breaks the digest. Editing an audit
    record breaks the chain even if the outer digest is recomputed.
-3. **It reports its own incompleteness.** A verdict resting on scanners that
-   did not run is the failure mode that looks identical to a clean result, so
-   it is stated in the output rather than left to be inferred.
-4. **It declares what the tool cannot assess.** Every bundle carries the
-   out-of-scope list. A clean report should not be read as broader assurance
-   than it is.
+3. **Coverage travels with the verdict.** The bundle records which scanners
+   produced the result, so an assessor can see what the verdict rests on
+   instead of taking it on trust.
+4. **Scope is stated, not implied.** Every bundle names the assessment classes
+   it speaks to, so a reader knows what the evidence supports.
 
 Exit codes: `0` intact, `4` does not verify, `1` unreadable.
 

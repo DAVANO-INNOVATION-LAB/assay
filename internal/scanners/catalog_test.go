@@ -3,6 +3,7 @@ package scanners
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -168,10 +169,9 @@ func TestUnbuiltScannersAreRejectedNotScheduled(t *testing.T) {
 			unbuilt = append(unbuilt, name)
 		}
 	}
-	if len(unbuilt) == 0 {
-		t.Skip("no unbuilt scanners in the catalog")
-	}
-
+	// The catalog currently names only scanners that ship, so this loop is
+	// usually empty. The invariants below are the ones that must hold either
+	// way, so they run unconditionally rather than behind a skip.
 	for _, name := range unbuilt {
 		if _, err := Get(name); err == nil {
 			t.Errorf("Get(%q) succeeded for a scanner with no image; a policy naming it would hang a scan", name)
@@ -193,5 +193,38 @@ func TestUnbuiltScannersAreRejectedNotScheduled(t *testing.T) {
 		if _, err := Get(name); err != nil {
 			t.Errorf("default scanner %q is not usable: %v", name, err)
 		}
+	}
+}
+
+// The catalog no longer ships an unbuilt entry, so the guard in Get and the
+// filter in Available had no test exercising them — the rejection path could
+// have been deleted or inverted and every test would still pass. A synthetic
+// entry keeps the guard covered independently of what the real catalog holds.
+func TestUnbuiltGuardRejectsSyntheticEntry(t *testing.T) {
+	const name = "test-unbuilt-fixture"
+	if _, exists := catalog[name]; exists {
+		t.Fatalf("fixture name %q collides with a real catalog entry", name)
+	}
+	catalog[name] = Definition{
+		Name:     name,
+		Category: CategoryMalware,
+		Image:    "scanner-does-not-exist",
+		Unbuilt:  true,
+	}
+	t.Cleanup(func() { delete(catalog, name) })
+
+	if _, err := Get(name); err == nil {
+		t.Error("Get accepted an unbuilt scanner; a policy naming it would hang a scan in ImagePullBackOff")
+	}
+	if slices.Contains(Available(), name) {
+		t.Error("Available() offered an unbuilt scanner")
+	}
+	if slices.Contains(Defaults(), name) {
+		t.Error("Defaults() included an unbuilt scanner")
+	}
+	// Names is the full declared set, so the entry must still be visible there;
+	// otherwise the guard would be hiding the catalog rather than gating it.
+	if !slices.Contains(Names(), name) {
+		t.Error("Names() dropped a declared scanner; the guard should gate use, not hide declarations")
 	}
 }

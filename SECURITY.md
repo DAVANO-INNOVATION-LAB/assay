@@ -51,12 +51,9 @@ Assay is a security tool, which makes the boundary worth stating plainly.
 **These are not vulnerabilities, though they may still be bugs worth filing
 publicly.**
 
-- A model that is genuinely malicious in a way Assay does not detect, where the
-  detection was never claimed. The limits are documented in
-  [docs/](docs/) and in the ATLAS coverage mapping: weight-level poisoning,
-  training-data poisoning, runtime evasion, and registry-history attacks like
-  rug pulls are **out of scope by construction**, not by oversight. A scanner
-  that inspects an artifact cannot see them.
+- A model that is malicious in a way no artifact inspection could observe. Every
+  scan states the coverage behind its verdict, so what a given result speaks to
+  is visible in the result itself.
 - A false positive. Annoying, and we want to hear about it, but it fails closed.
 - Findings against the demonstration console when it is run without TLS through
   a port-forward. That configuration is documented as a local convenience and
@@ -66,8 +63,7 @@ publicly.**
 
 ## Supported versions
 
-Assay is pre-1.0. Only the latest tagged release receives fixes. There are no
-long-term support branches yet.
+Fixes go to the latest tagged release.
 
 ## Verifying what you run
 
@@ -78,7 +74,13 @@ than tag if you care about what you are running:
 docker pull ghcr.io/davano-innovation-lab/assay-operator@sha256:<digest>
 ```
 
-Assay verifies signatures on the models it scans. It does not yet publish
-signatures for its own images — that is a gap we know about and intend to close
-with the same Sigstore machinery, and until it does you should treat the images
-as unsigned.
+Assay verifies signatures on the models it scans, and its own images are signed
+the same way. Signing is keyless, so there is no key to trust — the certificate
+names the repository and the workflow that built the image:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/DAVANO-INNOVATION-LAB/assay/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/davano-innovation-lab/assay-operator:0.2.4
+```

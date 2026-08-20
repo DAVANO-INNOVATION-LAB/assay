@@ -101,7 +101,8 @@ type Evidence struct {
 	// ResidualRisksDocumented reports that every accepted risk carries a
 	// reason and an approver.
 	ResidualRisksDocumented bool
-	// BiasEvaluated reports that fairness testing ran. Phase 2; false today.
+	// BiasEvaluated reports that fairness testing ran. Set from evidence
+	// outside the artifact scan, which is where that testing lives.
 	BiasEvaluated bool
 }
 

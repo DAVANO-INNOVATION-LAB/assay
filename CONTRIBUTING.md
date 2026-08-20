@@ -81,8 +81,8 @@ A scanner needs:
    will fail on an air-gapped cluster.
 4. A smoke test in `scanners/smoke-test.sh` proving it finds a planted artifact.
 
-Mark it `Unbuilt: true` until the image is published, so the console does not
-offer a scan that cannot pull.
+Add the catalog entry in the same change that publishes the image, so a policy
+can never name a scanner that cannot be pulled.
 
 ## Things we will probably push back on
 
