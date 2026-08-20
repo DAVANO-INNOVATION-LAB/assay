@@ -11,7 +11,7 @@ import (
 func findings() []securityv1alpha1.Finding {
 	return []securityv1alpha1.Finding{
 		{
-			ID: "ASSAY-PICKLE-001", Title: "Pickle imports a dangerous callable",
+			ID: "TESS-PICKLE-001", Title: "Pickle imports a dangerous callable",
 			Severity: "Critical", Category: "model",
 			Location:    "weights.pkl",
 			Description: "pickle stream references posix.system, which executes on load",

@@ -32,6 +32,10 @@ github.com/AzureAD/microsoft-authentication-library-for-go v1.7.0 h1:4iB+IesclUX
 github.com/AzureAD/microsoft-authentication-library-for-go v1.7.0/go.mod h1:HKpQxkWaGLJ+D/5H8QRpyQXA1eKjxkFlOMwck5+33Jk=
 github.com/DAVANO-INNOVATION-LAB/tessera v0.3.0 h1:q7vrffYMGi8BmOiiVUYS8gmoOv3hsPPJioDB0tv9y6A=
 github.com/DAVANO-INNOVATION-LAB/tessera v0.3.0/go.mod h1:yBfp9396Jbf8Z+BoeaPDQm/xI8lBzwwMfyztrJ47OjE=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.0 h1:TXHWLbJ2fK+LTDZ+8Vr/MK+utK/PJQKEX33XGPDpRSM=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.0/go.mod h1:yBfp9396Jbf8Z+BoeaPDQm/xI8lBzwwMfyztrJ47OjE=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.1 h1:e0KM+NBYAPgPEPLcKfZdcA8T6HwGnUulw+0XP23f+AE=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.1/go.mod h1:yBfp9396Jbf8Z+BoeaPDQm/xI8lBzwwMfyztrJ47OjE=
 github.com/alessio/shellescape v1.4.1 h1:V7yhSDDn8LP4lc4jS8pFkt0zCnzVJlG5JXy9BVKJUX0=
 github.com/alessio/shellescape v1.4.1/go.mod h1:PZAiSCk0LJaZkiCSkPv8qIobYglO3FPpyFjDCtHLS30=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 h1:DklsrG3dyBCFEj5IhUbnKptjxatkF07cF2ak3yi77so=

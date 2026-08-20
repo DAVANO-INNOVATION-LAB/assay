@@ -160,7 +160,7 @@ func TestAuditorNeverReceivesExploitPathsOverTheAPI(t *testing.T) {
 		Scanner:    "model-inspector",
 		ScanRef:    "scan-fraud",
 		Findings: []securityv1alpha1.Finding{{
-			ID: "ASSAY-PICKLE-001", Title: "Pickle imports a dangerous callable",
+			ID: "TESS-PICKLE-001", Title: "Pickle imports a dangerous callable",
 			Severity: "Critical", Location: "weights.pkl",
 			Description: "pickle stream references posix.system, which executes on load",
 		}},
@@ -186,7 +186,7 @@ func TestAuditorNeverReceivesExploitPathsOverTheAPI(t *testing.T) {
 	if strings.Contains(aud, "weights.pkl") || strings.Contains(aud, "posix.system") {
 		t.Errorf("the exploit path reached an auditor: %s", aud)
 	}
-	if !strings.Contains(aud, "ASSAY-PICKLE-001") {
+	if !strings.Contains(aud, "TESS-PICKLE-001") {
 		t.Error("the auditor cannot see that a finding exists at all")
 	}
 	if !strings.Contains(aud, "redacted") {

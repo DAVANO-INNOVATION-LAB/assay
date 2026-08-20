@@ -214,7 +214,7 @@ func TestZipBombIsFlaggedNotExpanded(t *testing.T) {
 		}
 		found := false
 		for _, f := range report.Findings {
-			if f.ID == "ASSAY-ARCHIVE-006" || f.ID == "ASSAY-ARCHIVE-005" {
+			if f.ID == "TESS-ARCHIVE-006" || f.ID == "TESS-ARCHIVE-005" {
 				found = true
 			}
 		}

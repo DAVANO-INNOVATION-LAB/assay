@@ -249,7 +249,7 @@ func coverageGaps(cov *resolver.Coverage) []securityv1alpha1.Finding {
 	var out []securityv1alpha1.Finding
 	for _, f := range cov.UnreadExecutable() {
 		out = append(out, securityv1alpha1.Finding{
-			ID:       "ASSAY-COVERAGE-001",
+			ID:       "TESS-COVERAGE-001",
 			Title:    "Executable-capable file was not scanned",
 			Severity: "High",
 			Category: "model",

@@ -180,8 +180,8 @@ func TestParseTrufflehogSkipsNonJSONLines(t *testing.T) {
 
 func TestParseAssayNativeFormat(t *testing.T) {
 	output := `{"findings":[
-    {"id":"ASSAY-PICKLE-001","title":"Pickle RCE","severity":"Critical","category":"model","location":"model.pkl"},
-    {"id":"ASSAY-EXEC-001","title":"Executable","severity":"Medium","category":"model","location":"run.sh"}
+    {"id":"TESS-PICKLE-001","title":"Pickle RCE","severity":"Critical","category":"model","location":"model.pkl"},
+    {"id":"TESS-EXEC-001","title":"Executable","severity":"Medium","category":"model","location":"run.sh"}
 ]}`
 	parsed, err := Parse(scanners.FormatAssay, writeFile(t, "assay.json", output))
 	if err != nil {

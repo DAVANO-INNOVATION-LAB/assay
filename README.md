@@ -19,7 +19,7 @@ docker run --rm ghcr.io/davano-innovation-lab/assay-operator:0.2.4 \
 ```
 
 ```
-  [Low     ] ASSAY-PICKLE-003  Pickle-based weights execute code on load
+  [Low     ] TESS-PICKLE-003  Pickle-based weights execute code on load
              at pytorch_model.bin
              this is inherent to the format, not a defect in this model —
              prefer safetensors, which cannot execute anything
@@ -289,7 +289,7 @@ $ assay inspect ./sketchy-model
 assay v0.2.4 — ./sketchy-model
 scanned 1 file(s), formats: [pickle]
 
-  [Critical] ASSAY-PICKLE-001  Pickle imports a dangerous callable
+  [Critical] TESS-PICKLE-001  Pickle imports a dangerous callable
              at weights.pkl
              pickle stream references posix.system, which executes on load
 

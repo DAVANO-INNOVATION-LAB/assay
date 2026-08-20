@@ -212,10 +212,10 @@ func TestUnsignedAcceptanceIsRecordedAsSuch(t *testing.T) {
 func TestFindingsSurviveIntoTheBundle(t *testing.T) {
 	in := sampleInput()
 	in.Findings = []securityv1alpha1.Finding{{
-		ID: "ASSAY-PICKLE-001", Severity: "Critical", Title: "Pickle executes code",
+		ID: "TESS-PICKLE-001", Severity: "Critical", Title: "Pickle executes code",
 	}}
 	b, _ := Build(in)
-	if len(b.Findings) != 1 || b.Findings[0].ID != "ASSAY-PICKLE-001" {
+	if len(b.Findings) != 1 || b.Findings[0].ID != "TESS-PICKLE-001" {
 		t.Fatal("findings must be carried in the bundle, not summarised away")
 	}
 }
