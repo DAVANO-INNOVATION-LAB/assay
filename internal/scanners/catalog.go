@@ -72,12 +72,12 @@ type Definition struct {
 	NeedsNetwork bool
 	// DefaultEnabled marks scanners that run when a policy lists no scanners.
 	DefaultEnabled bool
-	// Unbuilt marks a catalog entry that has no image in scanners/ yet.
+	// Unbuilt guards against a catalog entry whose image is not published.
 	//
 	// The catalog is what validates a policy's scanner list, so an entry with
-	// no image passed validation and then produced a Job that could only
+	// no image would pass validation and then produce a Job that could only
 	// ImagePullBackOff — a scan that hangs rather than a policy that is
-	// rejected. Naming one of these is now an error at the point of use.
+	// rejected. Naming one is an error at the point of use instead.
 	Unbuilt bool
 }
 

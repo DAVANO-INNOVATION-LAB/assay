@@ -6,10 +6,9 @@ Documentation and positioning. The README, SECURITY.md, the compliance guide and
 the console now describe what Assay is scoped to do and what each result rests
 on, in place of component-by-component maturity notes and a phased plan.
 
-The scanner catalog lists only scanners that ship. The status tables are current:
+The scanner catalog lists only scanners that ship. The status tables name
 Sigstore verification against a `TrustedPublisher`, the AI bill of materials,
-the promotion workflow and the broadened admission gate are all named where they
-were previously missing or described as unbuilt.
+the promotion workflow and the broadened admission gate.
 
 No behaviour changes. Every scan still records the coverage behind its verdict,
 every evidence bundle still names the assessment classes it speaks to, and the
