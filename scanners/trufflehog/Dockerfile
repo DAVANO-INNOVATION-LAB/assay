@@ -1,5 +1,5 @@
 # TruffleHog — detects credentials embedded in model artifacts.
-ARG TRUFFLEHOG_VERSION=3.88.2
+ARG TRUFFLEHOG_VERSION=3.97.0
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest AS fetcher
 ARG TRUFFLEHOG_VERSION
