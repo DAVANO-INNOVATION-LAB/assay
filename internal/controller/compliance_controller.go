@@ -291,8 +291,8 @@ func buildEvidence(report *securityv1alpha1.ModelSecurityReport, exceptions []se
 		ContinuousMonitoring:    status.LastScanTime != nil,
 		AdmissionEnforcing:      admissionEnforcing,
 		ResidualRisksDocumented: residualRisksDocumented(exceptions),
-		// Phase 2. Left false deliberately so MEASURE 2.11 cannot be
-		// satisfied by a clean security scan.
+		// Fairness testing is not an artifact scan, so this is never set from
+		// one. MEASURE 2.11 takes its own evidence or an attestation.
 		BiasEvaluated: false,
 	}
 }

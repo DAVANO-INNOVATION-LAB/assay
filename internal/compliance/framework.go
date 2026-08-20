@@ -100,7 +100,7 @@ const (
 	EvidenceRevocation EvidenceKind = "revocation"
 	// EvidenceCoverageGap — the explicit record of what was NOT measured.
 	EvidenceCoverageGap EvidenceKind = "coverage-gap"
-	// EvidenceBiasEval — fairness and bias evaluation. Phase 2; not yet
+	// EvidenceBiasEval — fairness and bias evaluation. Not produced by
 	// produced, so controls depending on it fail closed.
 	EvidenceBiasEval EvidenceKind = "bias-eval"
 )
@@ -356,7 +356,7 @@ var nistAIRMF10 = []Control{
 	{
 		ID: "MEASURE 2.4", Function: FunctionMeasure, Category: "MEASURE 2",
 		Text:       "The functionality and behavior of the AI system and its components – as identified in the map function – are monitored when in production.",
-		Automation: AutomationNone, Rationale: "Runtime behavioural monitoring is Phase 3. Assay observes artifacts at rest, not inference behaviour.",
+		Automation: AutomationNone, Rationale: "This subcategory concerns inference behaviour in production. Assay assesses the artifact, so this control takes evidence from runtime monitoring or an attestation.",
 	},
 	{
 		ID: "MEASURE 2.5", Function: FunctionMeasure, Category: "MEASURE 2",
@@ -396,7 +396,7 @@ var nistAIRMF10 = []Control{
 		ID: "MEASURE 2.11", Function: FunctionMeasure, Category: "MEASURE 2",
 		Text:       "Fairness and bias – as identified in the map function – are evaluated and results are documented.",
 		Automation: AutomationNone, Evidence: []EvidenceKind{EvidenceBiasEval},
-		Rationale: "Bias evaluation is Phase 2 and not yet implemented. Until it is, this control cannot be satisfied by Assay and must be attested or reported open — it must never be inferred from a clean security scan.",
+		Rationale: "Fairness evaluation is a separate discipline from artifact security and produces its own evidence. This control is satisfied by that evidence or by an attestation naming a reviewer, and is never inferred from a clean security scan.",
 	},
 	{
 		ID: "MEASURE 2.12", Function: FunctionMeasure, Category: "MEASURE 2",

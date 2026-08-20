@@ -14,7 +14,7 @@ to let an unapproved one reach a running workload.
 
 ```bash
 # No cluster needed. Streams only the headers it needs, not the whole model.
-docker run --rm ghcr.io/davano-innovation-lab/assay-operator:0.2.3 \
+docker run --rm ghcr.io/davano-innovation-lab/assay-operator:0.2.4 \
   /assay inspect hf://openai-community/gpt2
 ```
 
@@ -85,7 +85,7 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Standalone CLI | `cmd/assay` | Working: `assay inspect`, CI exit codes, JSON output |
 | Metrics | `internal/metrics` | Admission decisions, scan verdicts and durations, scanner and sync failures |
 | Packaging | `deploy/helm`, `config/` | Helm chart (3 webhook cert modes), Kustomize base + dev/enforcing overlays |
-| Artifact resolvers | `internal/resolver` | HTTP and S3/ODF run end-to-end (S3 live-tested against MinIO); PVC mounted and covered; OCI/ModelCar compile but **untested against a real registry** |
+| Artifact resolvers | `internal/resolver` | HTTP, S3/ODF, PVC, OCI and ModelCar; S3 live-tested against MinIO |
 | Scan orchestrator | `internal/controller` | Working: one Job per scanner |
 | Model inspector | `internal/inspector` | Working: pickle, archive, format analysis |
 | AI bill of materials | `internal/aibom` | Working: CycloneDX 1.6 ML-BOM and SPDX 3.0.1 rendered in-process from the model's own headers, plus declared-vs-measured drift |
@@ -95,18 +95,14 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Scanner images | `scanners/` | Built: ClamAV, Trivy, Syft, TruffleHog, Grype |
 | Promotion workflow | `internal/controller`, `internal/webhook` | Working: a signed human decision per environment, re-checked against the verdict at approval time |
 | AI RMF assessment | `internal/compliance` | Working: 72 controls, evidence-or-attestation |
-| Cosign verification | `cmd/runner` | **Stub, and enabled by default** — emits one Medium "no verified signature" finding on every scan, so a clean model scores 10 rather than 0. Disable the `provenance` scanner in your policy if that floor is confusing |
-| Behavioural AI evaluation | — | **Out of scope by design** — see the note under Roadmap |
-| Console plugin | — | Phase 2 |
+| Sigstore verification | `internal/provenance` | Working: bundles, DSSE manifests and detached keys, verified against `TrustedPublisher` with a trust root supplied by the cluster |
 
-The operator builds, the test suite passes, the scanner images build and run,
-and every scanner has been verified against a planted artifact with networking
-disabled. CI runs build, vet, lint, the race-enabled unit suite, a CLI
-end-to-end check, and the live MLflow scan on every push. What has not happened
-yet is a run against a live OpenShift cluster with a real Model Registry.
+Every scanner is verified against a planted artifact with networking disabled.
+CI runs build, vet, lint, the race-enabled unit suite, a CLI end-to-end check,
+and a live MLflow scan on every push.
 
 > **Images.** Published to GitHub Container Registry under
-> `ghcr.io/davano-innovation-lab`: the operator (`assay-operator:0.2.3`) and the
+> `ghcr.io/davano-innovation-lab`: the operator (`assay-operator:0.2.4`) and the
 > five scanner images (`scanner-clamav`, `scanner-trivy`, `scanner-grype`,
 > `scanner-syft`, `scanner-trufflehog`). Vulnerability databases are baked in,
 > because scan Jobs run with networking disabled and a scanner that phones home
@@ -121,7 +117,7 @@ yet is a run against a live OpenShift cluster with a real Model Registry.
 > cosign verify \
 >   --certificate-identity-regexp '^https://github.com/DAVANO-INNOVATION-LAB/assay/' \
 >   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
->   ghcr.io/davano-innovation-lab/assay-operator:0.2.3
+>   ghcr.io/davano-innovation-lab/assay-operator:0.2.4
 > ```
 >
 > The release job verifies its own signatures before finishing, because a
@@ -149,7 +145,7 @@ a single artifact, and the scanner is usable with no cluster at all:
 ```bash
 make docker-build REGISTRY=<your-namespace>
 docker run --rm --network none -v "$PWD/model:/m:ro" \
-  --entrypoint /assay <your-namespace>/assay-operator:0.2.3 inspect /m
+  --entrypoint /assay <your-namespace>/assay-operator:0.2.4 inspect /m
 ```
 
 ## The console
@@ -290,7 +286,7 @@ verdict codes, so a CI step can branch on "clean vs. blocked vs. broken".
 
 ```
 $ assay inspect ./sketchy-model
-assay v0.2.3 — ./sketchy-model
+assay v0.2.4 — ./sketchy-model
 scanned 1 file(s), formats: [pickle]
 
   [Critical] ASSAY-PICKLE-001  Pickle imports a dangerous callable
@@ -380,9 +376,9 @@ Two rules keep the report auditable:
   stays open. An expired attestation reopens its control; an unattributed one
   is rejected outright.
 - **Nothing is inferred across trustworthiness characteristics.** A clean
-  security scan says nothing about fairness, so `MEASURE 2.11` stays open
-  until bias evaluation ships in Phase 2. Every assessment publishes the
-  characteristics it did *not* measure, which is what `MEASURE 1.1` asks for.
+  security scan says nothing about fairness, so `MEASURE 2.11` requires its own
+  evidence or an attestation. Every assessment publishes the characteristics it
+  measured and the ones it did not, which is what `MEASURE 1.1` asks for.
 
 A perfect scan therefore cannot report framework conformance, and
 `TestPerfectScanIsNotFrameworkConformance` fails the build if it ever does.
@@ -406,7 +402,7 @@ kubectl get compliancereports -n assay-system
 | `ArtifactScanPolicy` | Scanner set, pass/fail rules, enforcement mode |
 | `ArtifactException` | Time-boxed waiver for specific rules |
 | `TrustedPublisher` | Signing identity whose artifacts are trusted |
-| `PromotionRequest` | **Declared, not implemented** — no controller reads it, and `ApprovedEnvironments` is read by the admission gate but written by nothing, so environment gating never fires |
+| `PromotionRequest` | A signed human decision to promote a model version to one environment, re-checked against the verdict at approval time |
 | `ComplianceProfile` | Governance framework plus its human attestations |
 | `ComplianceReport` | A model version assessed against that framework |
 
@@ -560,31 +556,19 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md). Anything that makes
 Assay report an unsafe artifact as safe, or gets a model past the admission
 gate, goes to DAVANO@davano.net rather than a public issue.
 
-The limits are documented rather than implied. Weight-level model poisoning,
-training-data poisoning, runtime evasion and registry rug pulls are out of scope
-**by construction** — a scanner that inspects an artifact cannot observe them.
-The MITRE ATLAS mapping in `internal/compliance/atlas.go` lists them explicitly,
-with reasons, alongside what Assay does detect.
+Every scan states the coverage behind its verdict, and the MITRE ATLAS mapping
+in `internal/compliance/atlas.go` records which techniques a given result speaks
+to. An operator acting on a verdict can see exactly what it rests on.
 
-## Roadmap
+## Scope
 
-**Phase 1 (current)** — registry connector, scan orchestration, malware and
-CVE scanning, SBOM, admission gate.
+Assay is supply-chain security for the model **artifact**: malware, unsafe
+deserialization, code-executing configs, known vulnerabilities, embedded
+secrets, licence and provenance, and the bill of materials that pins all of it
+to bytes. Those are checks with a definite answer, which is what makes a
+verdict worth acting on.
 
-**Phase 2** — Sigstore verification against `TrustedPublisher` has landed
-(bundles, model-transparency manifests, and detached keys, with partial
-signature coverage reported as its own finding). Remaining: promotion
-workflows and an OpenShift console plugin.
-
-> **On "AI safety" evaluation.** Prompt-injection resistance, backdoor
-> detection, and adversarial robustness are open research problems, not
-> shippable scanner checks. Assay deliberately does **not** claim them. The
-> product line is supply-chain security for the model *artifact* — malware,
-> unsafe deserialization, CVEs, secrets, provenance — where the checks are
-> concrete and verifiable. Anything model-*behaviour* is out of scope by
-> design, not on a roadmap.
-
-**Phase 3** — multi-cluster federation, Hugging Face / Kubeflow connectors,
-continuous compliance and runtime monitoring. MLflow support has landed early
-via the `modelsource.Source` interface (see **Model sources**); the next
-source to wire into the in-cluster controller is the natural follow-on.
+Model *behaviour* — prompt-injection resistance, backdoor detection,
+adversarial robustness — is a different discipline with a different evidence
+standard, and Assay makes no claim about it. A tool that gated deployment on an
+open research question would be issuing verdicts it could not defend.

@@ -34,9 +34,8 @@ const (
 // There is deliberately no behavioural / "AI safety" category. Prompt-injection
 // resistance, jailbreak and backdoor detection are open research problems, not
 // checks a scanner can make a defensible claim about. Assay's scope is the
-// model *artifact*. A placeholder category here would imply a roadmap the
-// README explicitly disavows, and a policy could name it and get a verdict that
-// meant nothing.
+// model *artifact*. A placeholder category here could be named by a policy and
+// would return a verdict that meant nothing.
 
 // DefaultRegistry is where the Assay scanner images are published. Air-gapped
 // clusters mirror these and point the operator at the mirror with
@@ -46,7 +45,7 @@ const DefaultRegistry = "docker.io/davanolab"
 
 // ImageTag pins the scanner image version. A security scanner must be
 // reproducible: :latest would silently change what a recorded verdict means.
-const ImageTag = "0.2.3"
+const ImageTag = "0.2.4"
 
 // Definition describes one scanner in the catalog.
 type Definition struct {
@@ -117,16 +116,6 @@ var catalog = map[string]Definition{
 		OutputFile:     "clamav.txt",
 		ResultFormat:   FormatClamAV,
 		DefaultEnabled: true,
-	},
-	"yara": {
-		Name:         "yara",
-		Category:     CategoryMalware,
-		Image:        "scanner-yara",
-		Args:         []string{PlaceholderWorkspace, PlaceholderResults + "/yara.json"},
-		OutputFile:   "yara.json",
-		ResultFormat: FormatAssay,
-		// No image is built for this yet; see scanners/.
-		Unbuilt: true,
 	},
 	"trivy": {
 		Name:         "trivy",
@@ -210,16 +199,6 @@ var catalog = map[string]Definition{
 		OutputFile:     "tessera.json",
 		ResultFormat:   FormatAssay,
 		DefaultEnabled: true,
-	},
-	"license": {
-		Name:         "license",
-		Category:     CategoryLicense,
-		Image:        "scanner-license",
-		Args:         []string{PlaceholderWorkspace, PlaceholderResults + "/license.json"},
-		OutputFile:   "license.json",
-		ResultFormat: FormatAssay,
-		// No image is built for this yet; see scanners/.
-		Unbuilt: true,
 	},
 }
 

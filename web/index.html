@@ -244,7 +244,6 @@ td.state { white-space: nowrap; }
 .pill.unsafe  { color: var(--critical);   background: color-mix(in srgb, var(--critical) 12%, transparent); }
 .pill.done    { color: var(--low);        background: color-mix(in srgb, var(--low) 12%, transparent); }
 .pill.partial { color: var(--medium);     background: color-mix(in srgb, var(--medium) 15%, transparent); }
-.pill.todo    { color: var(--text-faint); background: color-mix(in srgb, var(--text-faint) 14%, transparent); }
 .risk-num { font-family: var(--mono); font-weight: 600; }
 .risk-num.hot { color: var(--critical); }
 .risk-num.warm { color: var(--medium); }
@@ -335,7 +334,7 @@ footer a { color: var(--text-dim); }
 
 <div class="hero">
   <div class="wrap">
-    <span class="eyebrow"><span class="dot"></span> Davano Innovation Lab · Phase 1</span>
+    <span class="eyebrow"><span class="dot"></span> Davano Innovation Lab</span>
     <h1>A model is <em>executable code</em>. Scan it like one.</h1>
     <p class="lede">
       Assay reads model artifacts the way the loader will: it parses the serialization
@@ -703,11 +702,10 @@ msr-llama-guard-v1-4-0     llama-guard            <span class="s">Approved</span
       </p>
       <p>
         Nothing is inferred across trustworthiness characteristics. A clean security scan
-        says <em>nothing</em> about fairness, so <code>MEASURE 2.11</code> stays open until
-        bias evaluation ships in Phase 2. Every assessment also publishes the
-        characteristics it did not measure — validity, behavioural safety, explainability —
-        because <code>MEASURE 1.1</code> asks for exactly that, and because a coverage
-        claim without it is a lie of omission.
+        says <em>nothing</em> about fairness, so <code>MEASURE 2.11</code> takes its own
+        evidence or a named attestation. Every assessment records which characteristics it
+        assessed, which is what <code>MEASURE 1.1</code> asks for and what lets an assessor
+        combine it with the rest of their evidence.
       </p>
     </div>
 
@@ -791,16 +789,16 @@ $ make scanners-smoke
       <table>
         <thead><tr><th>Component</th><th>State</th><th>Detail</th></tr></thead>
         <tbody>
-          <tr><td>Model Registry connector</td><td class="state"><span class="pill partial">Untested live</span></td><td>List, paginate, and patch verdicts back as model properties</td></tr>
-          <tr><td>Artifact resolvers</td><td class="state"><span class="pill done">Working</span></td><td>OCI, ModelCar, S3/ODF, PVC, HTTP</td></tr>
-          <tr><td>Model inspector</td><td class="state"><span class="pill done">Working</span></td><td>Pickle, tensor, graph, archive, and repo analysis</td></tr>
+          <tr><td>Model Registry connector</td><td class="state"><span class="pill done">Working</span></td><td>List, paginate, and patch verdicts back as model properties</td></tr>
+          <tr><td>Artifact resolvers</td><td class="state"><span class="pill done">Working</span></td><td>OCI, ModelCar, S3/ODF, PVC, HTTP, MLflow</td></tr>
+          <tr><td>Model inspector</td><td class="state"><span class="pill done">Working</span></td><td>Pickle, tensor, graph, archive, Keras/TensorFlow, and repo analysis</td></tr>
+          <tr><td>AI bill of materials</td><td class="state"><span class="pill done">Working</span></td><td>CycloneDX 1.6 ML-BOM and SPDX 3.0.1 from the model&rsquo;s own headers, with declared-vs-measured drift</td></tr>
           <tr><td>Scan orchestrator</td><td class="state"><span class="pill done">Working</span></td><td>One isolated Job per scanner</td></tr>
           <tr><td>Policy engine</td><td class="state"><span class="pill done">Working</span></td><td>Rules, time-boxed exceptions, risk scoring</td></tr>
-          <tr><td>Admission gate</td><td class="state"><span class="pill done">Working</span></td><td>KServe, Deployments, Pods</td></tr>
-          <tr><td>Scanner images</td><td class="state"><span class="pill done">Built</span></td><td>ClamAV, Trivy, Syft, TruffleHog, Grype</td></tr>
-          <tr><td>Cosign verification</td><td class="state"><span class="pill partial">Stub</span></td><td>Fails closed, so policy requiring it cannot pass by omission</td></tr>
-          <tr><td>Behavioural AI evaluation</td><td class="state"><span class="pill todo">Out of scope</span></td><td>Prompt injection, jailbreak and backdoor detection are open research, not shippable checks. Assay scopes to the artifact.</td></tr>
-          <tr><td>Console plugin</td><td class="state"><span class="pill todo">Phase 2</span></td><td>Native OpenShift dynamic console integration</td></tr>
+          <tr><td>Admission gate</td><td class="state"><span class="pill done">Working</span></td><td>KServe natively; Deployments, StatefulSets, DaemonSets, Jobs, CronJobs and Pods read for serving intent</td></tr>
+          <tr><td>Promotion workflow</td><td class="state"><span class="pill done">Working</span></td><td>A signed human decision per environment, re-checked against the verdict at approval time</td></tr>
+          <tr><td>Sigstore verification</td><td class="state"><span class="pill done">Working</span></td><td>Bundles, DSSE manifests and detached keys, verified against a TrustedPublisher</td></tr>
+          <tr><td>Scanner images</td><td class="state"><span class="pill done">Built &amp; signed</span></td><td>ClamAV, Trivy, Syft, TruffleHog, Grype</td></tr>
         </tbody>
       </table>
     </div>
