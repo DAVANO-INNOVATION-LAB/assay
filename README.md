@@ -95,9 +95,8 @@ Model Registry ──▶ ModelRegistryConnector ──▶ ArtifactScan
 | Scanner images | `scanners/` | Built: ClamAV, Trivy, Syft, TruffleHog, Grype |
 | Promotion workflow | `internal/controller`, `internal/webhook` | Working: a signed human decision per environment, re-checked against the verdict at approval time |
 | AI RMF assessment | `internal/compliance` | Working: 72 controls, evidence-or-attestation |
-| Cosign verification | `cmd/runner` | **Stub, and enabled by default** — emits one Medium "no verified signature" finding on every scan, so a clean model scores 10 rather than 0. Disable the `provenance` scanner in your policy if that floor is confusing |
-| Behavioural AI evaluation | — | **Out of scope by design** — see the note under Roadmap |
-| Console plugin | — | Phase 2 |
+| Cosign verification | `cmd/runner` | **Enabled by default** — emits one Medium "no verified signature" finding on every scan, so a clean model scores 10 rather than 0. Disable the `provenance` scanner in your policy if that floor is confusing |
+| Behavioural AI evaluation | — | **Out of scope by design** — see Scope |
 
 The operator builds, the test suite passes, the scanner images build and run,
 and every scanner has been verified against a planted artifact with networking
@@ -381,7 +380,7 @@ Two rules keep the report auditable:
   is rejected outright.
 - **Nothing is inferred across trustworthiness characteristics.** A clean
   security scan says nothing about fairness, so `MEASURE 2.11` stays open
-  until bias evaluation ships in Phase 2. Every assessment publishes the
+  unless a bias evaluation is attested. Every assessment publishes the
   characteristics it did *not* measure, which is what `MEASURE 1.1` asks for.
 
 A perfect scan therefore cannot report framework conformance, and
@@ -566,25 +565,12 @@ training-data poisoning, runtime evasion and registry rug pulls are out of scope
 The MITRE ATLAS mapping in `internal/compliance/atlas.go` lists them explicitly,
 with reasons, alongside what Assay does detect.
 
-## Roadmap
+## Scope
 
-**Phase 1 (current)** — registry connector, scan orchestration, malware and
-CVE scanning, SBOM, admission gate.
-
-**Phase 2** — Sigstore verification against `TrustedPublisher` has landed
-(bundles, model-transparency manifests, and detached keys, with partial
-signature coverage reported as its own finding). Remaining: promotion
-workflows and an OpenShift console plugin.
-
-> **On "AI safety" evaluation.** Prompt-injection resistance, backdoor
-> detection, and adversarial robustness are open research problems, not
-> shippable scanner checks. Assay deliberately does **not** claim them. The
-> product line is supply-chain security for the model *artifact* — malware,
-> unsafe deserialization, CVEs, secrets, provenance — where the checks are
-> concrete and verifiable. Anything model-*behaviour* is out of scope by
-> design, not on a roadmap.
-
-**Phase 3** — multi-cluster federation, Hugging Face / Kubeflow connectors,
-continuous compliance and runtime monitoring. MLflow support has landed early
-via the `modelsource.Source` interface (see **Model sources**); the next
-source to wire into the in-cluster controller is the natural follow-on.
+**On "AI safety" evaluation.** Prompt-injection resistance, backdoor
+detection, and adversarial robustness are open research problems, not
+shippable scanner checks. Assay deliberately does **not** claim them. The
+product line is supply-chain security for the model *artifact* — malware,
+unsafe deserialization, CVEs, secrets, provenance — where the checks are
+concrete and verifiable. Anything model-*behaviour* is out of scope by
+design.
