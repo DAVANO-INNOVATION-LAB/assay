@@ -26,7 +26,7 @@ const (
 	// from OutcomeAllowed because the two are opposite facts — one is an
 	// approval, the other is the gate admitting that it did not gate.
 	OutcomeAllowedUnidentified = "allowed_unidentified_model"
-	OutcomeError          = "error"
+	OutcomeError               = "error"
 )
 
 var (
