@@ -80,7 +80,7 @@ jobs:
 
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/assay-*
@@ -92,8 +92,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
 
       # Two forms on purpose. The git tag carries a leading v by convention;
       # container tags and Helm appVersion do not, and the manifests in
@@ -114,7 +114,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Build and push operator image
         id: build
@@ -202,8 +202,8 @@ jobs:
     # so a scan needs no egress.
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
 
       # Two forms on purpose. The git tag carries a leading v by convention;
       # container tags and Helm appVersion do not, and the manifests in
@@ -243,7 +243,7 @@ jobs:
             IMAGE_TAG="${{ steps.version.outputs.image_tag }}"
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
 
       - name: Build and push scanner images for every platform
         if: ${{ startsWith(github.ref, 'refs/tags/') || github.event.inputs.push_images == 'true' }}

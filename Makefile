@@ -1,6 +1,6 @@
 REGISTRY ?= ghcr.io/davano-innovation-lab
 IMG ?= $(REGISTRY)/assay-operator:$(IMAGE_TAG)
-IMAGE_TAG ?= 0.2.0
+IMAGE_TAG ?= 0.2.2
 NAMESPACE ?= assay-system
 CONTROLLER_TOOLS_VERSION ?= v0.17.2
 
@@ -19,7 +19,7 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 # binary from the marketplace action would hit.
 GOLANGCI_LINT_VERSION ?= v1.62.2
 
-# Stamped into the standalone CLI. Override on release: make cli VERSION=v0.2.0
+# Stamped into the standalone CLI. Override on release: make cli VERSION=v0.2.2
 VERSION ?= dev
 CLI_LDFLAGS ?= -X main.version=$(VERSION)
 
@@ -78,7 +78,7 @@ build: fmt vet ## Build all binaries.
 	go build -ldflags "$(CLI_LDFLAGS)" -o bin/assay ./cmd/assay
 
 .PHONY: cli
-cli: ## Build the standalone inspector CLI (make cli VERSION=v0.2.0).
+cli: ## Build the standalone inspector CLI (make cli VERSION=v0.2.2).
 	go build -ldflags "$(CLI_LDFLAGS)" -o bin/assay ./cmd/assay
 
 # GOOS/GOARCH pairs shipped as release binaries.
@@ -166,7 +166,7 @@ helm-lint: helm-sync ## Lint and render the chart in every cert mode.
 		--set scanner.additionalNamespaces='{team-a,team-b}' > /dev/null
 
 .PHONY: helm-package
-helm-package: helm-lint ## Package the chart (make helm-package VERSION=v0.2.0).
+helm-package: helm-lint ## Package the chart (make helm-package VERSION=v0.2.2).
 	helm package $(HELM_CHART) --version $(VERSION:v%=%) --app-version $(VERSION:v%=%) -d dist/
 
 .PHONY: kustomize-build

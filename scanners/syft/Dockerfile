@@ -1,5 +1,5 @@
 # Syft — SBOM generation for model artifacts.
-ARG SYFT_VERSION=1.18.1
+ARG SYFT_VERSION=1.51.0
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest AS fetcher
 ARG SYFT_VERSION

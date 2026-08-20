@@ -14,7 +14,7 @@ to let an unapproved one reach a running workload.
 
 ```bash
 # No cluster needed. Streams only the headers it needs, not the whole model.
-docker run --rm ghcr.io/davano-innovation-lab/assay-operator:0.2.0 \
+docker run --rm ghcr.io/davano-innovation-lab/assay-operator:0.2.2 \
   /assay inspect hf://openai-community/gpt2
 ```
 
@@ -106,7 +106,7 @@ end-to-end check, and the live MLflow scan on every push. What has not happened
 yet is a run against a live OpenShift cluster with a real Model Registry.
 
 > **Images.** Published to GitHub Container Registry under
-> `ghcr.io/davano-innovation-lab`: the operator (`assay-operator:0.2.0`) and the
+> `ghcr.io/davano-innovation-lab`: the operator (`assay-operator:0.2.2`) and the
 > five scanner images (`scanner-clamav`, `scanner-trivy`, `scanner-grype`,
 > `scanner-syft`, `scanner-trufflehog`). Vulnerability databases are baked in,
 > because scan Jobs run with networking disabled and a scanner that phones home
@@ -121,7 +121,7 @@ yet is a run against a live OpenShift cluster with a real Model Registry.
 > cosign verify \
 >   --certificate-identity-regexp '^https://github.com/DAVANO-INNOVATION-LAB/assay/' \
 >   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
->   ghcr.io/davano-innovation-lab/assay-operator:0.2.0
+>   ghcr.io/davano-innovation-lab/assay-operator:0.2.2
 > ```
 >
 > The release job verifies its own signatures before finishing, because a
@@ -149,7 +149,7 @@ a single artifact, and the scanner is usable with no cluster at all:
 ```bash
 make docker-build REGISTRY=<your-namespace>
 docker run --rm --network none -v "$PWD/model:/m:ro" \
-  --entrypoint /assay <your-namespace>/assay-operator:0.2.0 inspect /m
+  --entrypoint /assay <your-namespace>/assay-operator:0.2.2 inspect /m
 ```
 
 ## The console
@@ -290,7 +290,7 @@ verdict codes, so a CI step can branch on "clean vs. blocked vs. broken".
 
 ```
 $ assay inspect ./sketchy-model
-assay v0.2.0 — ./sketchy-model
+assay v0.2.2 — ./sketchy-model
 scanned 1 file(s), formats: [pickle]
 
   [Critical] ASSAY-PICKLE-001  Pickle imports a dangerous callable

@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.2.2
+
+Maintenance.
+
+**Pinned scanner versions moved to current upstream releases.** The pins had
+drifted a long way — syft was 33 minor versions behind, grype 30, trufflehog 9,
+trivy 2. A scanner image vendors a third-party binary and bakes its database,
+so a pin nothing touches ships someone else's old build indefinitely; nothing
+renews it on its own.
+
+| tool | was | now |
+|---|---|---|
+| syft | 1.18.1 | 1.51.0 |
+| grype | 0.87.0 | 0.117.0 |
+| trufflehog | 3.88.2 | 3.97.0 |
+| trivy | 0.72.0 | 0.74.0 |
+
+Verified rather than assumed: all four rebuild, and the air-gapped smoke test
+still proves each detects what it claims to — the EICAR file, the planted AWS
+key, CVEs from the baked database, and an SPDX document with the pinned
+dependencies catalogued. That check is why bumping a scanner is done carefully:
+one that silently stopped finding things is worse than one that is out of date.
+
+**The image tag in the checked-in manifests now matches the release.** v0.2.1
+was tagged without bumping them, so a manifest applied from that tag deployed
+0.2.0 images — the inverse of the trap the release workflow already documents,
+and the reason both forms of the version are resolved there.
+
+The remaining GitHub Actions are on current majors.
+
+Deliberately not taken: `k8s.io/*` 0.32 → 0.36 and `controller-runtime`
+0.20 → 0.24. That is four Kubernetes minor releases with breaking API changes
+across the webhook and client surfaces, and it needs its own change with its
+own testing rather than riding along in a maintenance release.
+
 ## v0.2.0
 
 Six features, and a version's worth of claims that turned out not to be true

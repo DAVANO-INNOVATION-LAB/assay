@@ -1,5 +1,5 @@
 # Trivy — the primary vulnerability and misconfiguration scanner.
-ARG TRIVY_VERSION=0.72.0
+ARG TRIVY_VERSION=0.74.0
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest AS fetcher
 ARG TRIVY_VERSION

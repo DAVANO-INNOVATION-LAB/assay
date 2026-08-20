@@ -1,5 +1,5 @@
 # Grype — vulnerability scanning, run alongside Trivy for corroboration.
-ARG GRYPE_VERSION=0.87.0
+ARG GRYPE_VERSION=0.117.0
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:latest AS fetcher
 ARG GRYPE_VERSION
