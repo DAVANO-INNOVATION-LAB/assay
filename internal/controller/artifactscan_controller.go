@@ -486,7 +486,7 @@ func (r *ArtifactScanReconciler) upsertModelSecurityReport(ctx context.Context, 
 	report.Status.RiskScore = eval.RiskScore
 	report.Status.Malware = eval.MalwareStatus
 	report.Status.Secrets = eval.SecretsStatus
-	report.Status.CVEs = eval.CVEs
+	report.Status.CVEs = policy.FromCounts(eval.CVEs)
 	report.Status.SignatureVerified = eval.SignatureVerified
 	report.Status.Scanners = scan.Status.Results
 	report.Status.LastScanTime = &now

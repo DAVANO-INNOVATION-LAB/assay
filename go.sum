@@ -36,6 +36,16 @@ github.com/DAVANO-INNOVATION-LAB/tessera v0.4.0 h1:TXHWLbJ2fK+LTDZ+8Vr/MK+utK/PJ
 github.com/DAVANO-INNOVATION-LAB/tessera v0.4.0/go.mod h1:yBfp9396Jbf8Z+BoeaPDQm/xI8lBzwwMfyztrJ47OjE=
 github.com/DAVANO-INNOVATION-LAB/tessera v0.4.1 h1:e0KM+NBYAPgPEPLcKfZdcA8T6HwGnUulw+0XP23f+AE=
 github.com/DAVANO-INNOVATION-LAB/tessera v0.4.1/go.mod h1:yBfp9396Jbf8Z+BoeaPDQm/xI8lBzwwMfyztrJ47OjE=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.2 h1:jLSlz56fODbCiy+64vt9bhGe3YZMuuTBxRX6IG76T2w=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.2/go.mod h1:yBfp9396Jbf8Z+BoeaPDQm/xI8lBzwwMfyztrJ47OjE=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.3 h1:mztpprC+YcHs5qxXaDh4wRWyEfiHckCqizKMAbQeg/c=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.3/go.mod h1:yBfp9396Jbf8Z+BoeaPDQm/xI8lBzwwMfyztrJ47OjE=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.4 h1:1tQI4mb6811/KtQYSPO4wnamwdK1eGfJdLZvPVxAiPQ=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.4/go.mod h1:yBfp9396Jbf8Z+BoeaPDQm/xI8lBzwwMfyztrJ47OjE=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.5 h1:TTZVDahrJQwNvCpVecY9cW5Rdd8GOJFWjjRelQ0zeUM=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.5/go.mod h1:yBfp9396Jbf8Z+BoeaPDQm/xI8lBzwwMfyztrJ47OjE=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.6 h1:4VYxLSdlp4C9u1SJHRfg2zzahxQb2LvuovMyIjak/Vk=
+github.com/DAVANO-INNOVATION-LAB/tessera v0.4.6/go.mod h1:yBfp9396Jbf8Z+BoeaPDQm/xI8lBzwwMfyztrJ47OjE=
 github.com/alessio/shellescape v1.4.1 h1:V7yhSDDn8LP4lc4jS8pFkt0zCnzVJlG5JXy9BVKJUX0=
 github.com/alessio/shellescape v1.4.1/go.mod h1:PZAiSCk0LJaZkiCSkPv8qIobYglO3FPpyFjDCtHLS30=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 h1:DklsrG3dyBCFEj5IhUbnKptjxatkF07cF2ak3yi77so=

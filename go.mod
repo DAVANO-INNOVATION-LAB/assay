@@ -3,7 +3,7 @@ module github.com/DAVANO-INNOVATION-LAB/assay
 go 1.25.8
 
 require (
-	github.com/DAVANO-INNOVATION-LAB/tessera v0.4.1
+	github.com/DAVANO-INNOVATION-LAB/tessera v0.4.6
 	github.com/aws/aws-sdk-go-v2 v1.43.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.38
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.37
