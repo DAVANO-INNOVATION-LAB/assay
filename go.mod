@@ -4,29 +4,27 @@ go 1.25.8
 
 require (
 	github.com/DAVANO-INNOVATION-LAB/tessera v0.4.6
-	github.com/aws/aws-sdk-go-v2 v1.43.7
-	github.com/aws/aws-sdk-go-v2/config v1.32.38
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.37
-	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.22.44
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.3
+	github.com/DAVANO-INNOVATION-LAB/tessera-fetch v0.1.0
+	github.com/DAVANO-INNOVATION-LAB/tessera-sigstore v0.1.1
 	github.com/coreos/go-oidc/v3 v3.20.0
 	github.com/evanphx/json-patch/v5 v5.9.11
 	github.com/prometheus/client_golang v1.24.1
-	github.com/sigstore/sigstore-go v1.3.0
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.22.0
 	k8s.io/api v0.32.3
 	k8s.io/apimachinery v0.32.3
 	k8s.io/client-go v0.32.3
-	oras.land/oras-go/v2 v2.6.2
 	sigs.k8s.io/controller-runtime v0.20.4
 	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
+	github.com/aws/aws-sdk-go-v2 v1.43.7 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.18 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.32.38 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.37 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.38 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.22.44 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.38 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.38 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.39 // indirect
@@ -34,6 +32,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.31 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.38 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.39 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.107.3 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.5.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.33.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.38.7 // indirect
@@ -108,6 +107,7 @@ require (
 	github.com/sigstore/rekor v1.5.3 // indirect
 	github.com/sigstore/rekor-tiles/v2 v2.3.0 // indirect
 	github.com/sigstore/sigstore v1.10.8 // indirect
+	github.com/sigstore/sigstore-go v1.3.0 // indirect
 	github.com/sigstore/timestamp-authority/v2 v2.1.3 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/theupdateframework/go-tuf/v2 v2.4.2 // indirect
@@ -126,6 +126,7 @@ require (
 	golang.org/x/crypto v0.54.0 // indirect
 	golang.org/x/mod v0.40.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
@@ -142,6 +143,7 @@ require (
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20241105132330-32ad38e42d3f // indirect
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738 // indirect
+	oras.land/oras-go/v2 v2.6.2 // indirect
 	sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.2 // indirect
 )
